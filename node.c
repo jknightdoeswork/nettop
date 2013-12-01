@@ -160,21 +160,10 @@ struct window *append(struct list *l, char name[])
 /* given a node name, get it's corresponding port */
 int getportfromname(char name[])
 {
-    struct window *w = nodelist->head;
-    
-    while(w != NULL)
-    {
-        if(strcmp(w->name, name) == 0)
-        {
-            return w->port;
-        }
-        
-        w = w->next;
-    }
-    
-    /* ERROR GETTING PORT */
-    printf("Error getting port\n");
-    return -1;
+    struct window *w = getwindowfromname(name);
+    if (w == NULL)
+        return -1;
+    return w->port;
 }
 
 /* give them an ack number to use, and increment so we
@@ -485,46 +474,26 @@ struct window *getwindowfromname(char name[])
         w = w->next;
     }
     
-    printf("Error getting window!\n");
-    exit(1);
+    fprintf(stderr, "Error getting window for name: %s\n", name);
+    return NULL;
 }
 
 /* get the address to send to for a node from it's name */
 struct sockaddr *getaddrfromname(char name[])
 {
-    struct window *w = nodelist->head;
-    
-    while(w != NULL)
-    {
-        if(strcmp(w->name, name) == 0)
-        {
-            return w->addr;
-        }
-        
-        w = w->next;
-    }
-    
-    printf("Getting address failed!\n");
-    exit(1);
+    struct window* w = getwindowfromname(name);
+    if (w == NULL)
+        return NULL;
+    return w->addr;
 }
 
 /* get the socket from the name */
 int getsockfromname(char name[])
 {
-    struct window *w = nodelist->head;
-    
-    while(w != NULL)
-    {
-        if(strcmp(w->name, name) == 0)
-        {
-            return w->socket;
-        }
-        
-        w = w->next;
-    }
-    
-    printf("Getting socket failed!\n");
-    exit(1);
+    struct window* w = getwindowfromname(name);
+    if (w == NULL)
+        return -1;
+    return w->socket;
 }
 
 /* initialize some basic features of the program */
