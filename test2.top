@@ -1,1 +1,0 @@
-struct msgtok *tok = tokenmsg(msg);
