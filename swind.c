@@ -4,8 +4,7 @@
 
 #include "node.h"
 
-/* increment first and last for a given queue because we
- received one in order */
+/* increment the sliding window range for a given window */
 void incr(struct window *q)
 {
     if(++(q->first) == QUEUESIZE)
@@ -17,7 +16,7 @@ void incr(struct window *q)
     return;
 }
 
-/* wrap on queuesize, don't increment, just give next number */
+/* get the next value in a sliding window (wrap on QUEUESIZE) */
 int plusone(int i)
 {
     if(i<QUEUESIZE-1)
@@ -25,7 +24,8 @@ int plusone(int i)
     else return 0;
 }
 
-/* check if an acknum is outside of the range of the window */
+/* check if an acknum is outside of the range of the
+ sliding window */
 int outside(struct window *q, int acknum)
 {
     int first = q->first, last = q->last;
@@ -47,7 +47,7 @@ int outside(struct window *q, int acknum)
     }
 }
 
-/* general function to receive and parse messages on a socket */
+/* general function for a node to receive a message */
 int receivemsg(char *name)
 {
     char recvbuf[BUFSIZE];
@@ -81,7 +81,7 @@ int receivemsg(char *name)
     return bytes;
 }
 
-/* read the message to see what type it is */
+/* read the payload to see what type it is */
 int interpret(char *msg)
 {
     if(msg[0] == '+')
@@ -92,8 +92,8 @@ int interpret(char *msg)
         return enumrealmsg;
 }
 
-/* clear all elements in the queue that are now in order */
-void clearq(struct routing_table_entry *ql, int type)
+/* clear all packets in a window that are now in order */
+void clearwindow(struct routing_table_entry *ql, int type)
 {
     struct window *q;
     
@@ -161,7 +161,8 @@ void clearq(struct routing_table_entry *ql, int type)
     return;
 }
 
-/* check if the message is a duplicate */
+/* check if the message is a duplicate (already exists
+ in our window) */
 int ihavemsg(struct window *q, int ack)
 {
     struct packet *el = q->head;
@@ -177,7 +178,8 @@ int ihavemsg(struct window *q, int ack)
     return 0;
 }
 
-/* check if the message is in order, if not, send a nack */
+/* check if the message is in order for our window
+ (the next one we are expecting, or if something was lost) */
 int msginorder(struct window *q, int ack)
 {
     if(ack == q->first)
@@ -204,7 +206,8 @@ void freetok(struct msgtok *tok)
     return;
 }
 
-/* parse the message */
+/* parse the message and store all of it's info in a
+ msgtok structure and return the structure */
 struct msgtok *tokenmsg(char *msg)
 {
     char *tok, *saveptr;
@@ -263,7 +266,8 @@ struct msgtok *tokenmsg(char *msg)
     return msgtok;
 }
 
-/* check if I am the destination */
+/* return true if I (given my name and a message)
+ am the intended recipient of the message */
 int iamdest(char *name, char *msg)
 {
     struct msgtok *tok = tokenmsg(msg);
@@ -311,7 +315,8 @@ void sendbacknack(char *msg, int out)
     return;
 }
 
-/* send back nacks for all messages outstanding */
+/* send back nacks for all messages outstanding
+ (out of order) */
 void sendnacks(struct window *q, char *msg)
 {
     struct packet *el = q->head;
@@ -341,8 +346,8 @@ void sendnacks(struct window *q, char *msg)
     return;
 }
 
-/* this can only happen if I sent them something and they
- are confirming they received it */
+/* handle the message if it is an ack (ie marking the packets
+ as having been successfully received) */
 void handleack(char *name, char *msg)
 {
     /* I just received a pure ack confirming a message I sent */
@@ -350,6 +355,18 @@ void handleack(char *name, char *msg)
     
     /* tokenize the message */
     struct msgtok *tok = tokenmsg(msg);
+    
+    /* forward it if it isn't intended for me */
+    if(!iamdest(name, msg))
+    {
+        /* i am not the destination so forward it towards the
+         real destination. the msg will still contain the original
+         sender, so we won't modify the message */
+        sendudp(name, msg, tok->dest);
+        
+        freetok(tok);
+        return;
+    }
     
     /* the source of the message is the "dest" of my queue */
     struct routing_table_entry *ql = get_routing_table_entry(name, tok->src);
@@ -382,23 +399,30 @@ void handleack(char *name, char *msg)
         exit(1);
     }
     
-    clearq(ql, enumpureack);
+    clearwindow(ql, enumpureack);
     
     freetok(tok);
     return;
 }
 
-/* handle if we received a nack on a message */
+/* handle if we received a nack. (ie a packet was
+ lost or delayed) */
 void handlenack(char *name, char *msg)
 {
     printf("Received a nack: %s\n-----------\n", msg);
     
     struct msgtok *tok = tokenmsg(msg);
     
-    if(strcmp(name, tok->dest) != 0)
+    /* forward it if it isn't intended for me */
+    if(!iamdest(name, msg))
     {
-        printf("Error, I am not the dest?\n");
-        exit(1);
+        /* i am not the destination so forward it towards the
+         real destination. the msg will still contain the original
+         sender, so we won't modify the message */
+        sendudp(name, msg, tok->dest);
+        
+        freetok(tok);
+        return;
     }
     
     struct routing_table_entry *ql = get_routing_table_entry(tok->dest, tok->src);
@@ -426,8 +450,8 @@ void handlenack(char *name, char *msg)
     return;
 }
 
-/* this is me receiving a message from someone so if it is
- in order then advance my window */
+/* given a real message, interpret it and send back an ack
+ saying that I've successfully received the message */
 void handlemsg(char *name, char *msg)
 {
     struct msgtok *tok = tokenmsg(msg);
@@ -480,7 +504,7 @@ void handlemsg(char *name, char *msg)
             sendnacks(q, msg);
         
         /* and clear the queue */
-        clearq(ql, enumrealmsg);
+        clearwindow(ql, enumrealmsg);
     }
     
     freetok(tok);

@@ -27,7 +27,7 @@
 
 /* DEFINES */
 
-#define DEBUGWINDOWS 0
+#define DEBUGWINDOWS 1
 
 #define DROPPROB 0
 #define QUEUESIZE 20
