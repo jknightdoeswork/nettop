@@ -27,6 +27,8 @@
 
 /* DEFINES */
 
+#define DEBUGWINDOWS 0
+
 #define DROPPROB 0
 #define QUEUESIZE 20
 #define SLIDENSIZE 8
@@ -49,22 +51,22 @@ struct msgtok
 };
 
 /* in this proxy enqT is for timeouts, acknum is the ack it is */
-struct qel
+struct packet
 {
     char msg[BUFSIZE];
     time_t enqT;
     int acknum;
     int received;
     
-    struct qel *next, *prev;
+    struct packet *next, *prev;
 };
 
 /*queue struct, first is the first item in the sliding window,
  last is the last item in sliding window */
-struct queue
+struct window
 {
-	struct qel *head;
-	struct qel *tail;
+	struct packet *head;
+	struct packet *tail;
 	int sz;
 	int max;
 	int first;
@@ -72,31 +74,36 @@ struct queue
     int cur;
 };
 
+
 /* holds a list of send and receive queues for every other node */
-struct queuelist
+struct routing_table_entry
 {
-    struct queue *sendq, *recvq;
+    struct window *sendq, *recvq;
     char name[BUFSIZE];
+    //planning
+    char through[BUFSIZE];
+    int weight;
     
-    struct queuelist *next, *prev;
+    // eplanning
+    struct routing_table_entry *next, *prev;
 };
 
 /* is the window used for reliable transfer between nodes */
-struct window
+struct node
 {
-    struct queuelist *qlist;
+    struct routing_table_entry *qlist;
     char name[BUFSIZE];
     int port, socket;
     
     struct sockaddr *addr;
     
-    struct window *next, *prev;
+    struct node *next, *prev;
 };
 
 /* holds a nodes lists of buffers it can send with */
 struct list
 {
-    struct window *head, *tail;
+    struct node *head, *tail;
     int sz;
 };
 
@@ -111,37 +118,37 @@ enum globalenums
 /* FUNCTIONS */
 
 /* for node.c */
-struct queuelist *qlappend(struct window *w, char name[]);
-struct window *append(struct list *l, char name[]);
-void printqueue(struct queue *q);
-int enqueue(struct queue *q, char* msg);
+struct routing_table_entry *rtappend(struct node *w, char name[]);
+struct node *append(struct list *l, char name[]);
+void printwindow(struct window *q);
+int enqueue(struct window *q, char* msg);
 int comesfirst(int first, int a, int b);
-struct qel *dequeue(struct queue *q);
-struct window *addnode(char name[]);
-int reqack(struct queue *q);
-void getaddr(struct window *w);
+struct packet *dequeue(struct window *q);
+struct node *addnode(char name[]);
+int reqack(struct window *q);
+void getaddr(struct node *w);
 int getportfromname(char name[]);
-struct qel *dequeue_el(struct queue *q, struct qel *el);
+struct packet *dequeue_el(struct window *q, struct packet *el);
 struct sockaddr *getaddrfromname(char name[]);
 void sendudp(char *src, char *msg, char *dest);
 int getsockfromname(char name[]);
-struct window *getwindowfromname(char name[]);
+struct node *getnodefromname(char name[]);
 int setupmyport(char name[]);
-struct queuelist *getql(char *src, char *dest);
+struct routing_table_entry *get_routing_table_entry(char *src, char *dest);
 
 /* for swind.c */
 int plusone(int i);
 int receivemsg(char *name);
 int iamdest(char *name, char *msg);
-int msginorder(struct queue *q, int ack);
-void sendnacks(struct queue *q, char *msg);
+int msginorder(struct window *q, int ack);
+void sendnacks(struct window *q, char *msg);
 void sendbacknack(char *msg, int out);
 void sendbackack(char *msg);
 
 void handleack(char *name, char *msg);
 void handlenack(char *name, char *msg);
 void handlemsg(char *name, char *msg);
-int ihavemsg(struct queue *q, int ack);
+int ihavemsg(struct window *q, int ack);
 struct msgtok *tokenmsg(char *msg);
 int interpret(char *msg);
 void freetok(struct msgtok *tok);

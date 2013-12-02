@@ -7,8 +7,8 @@
 struct list *nodelist;
 int globalport = 3490;
 
-/* add a node to our nodelist */
-struct window *addnode(char name[])
+/* add a node entry to our global list of nodes */
+struct node *addnode(char name[])
 {
     /* add it to the set of all nodes */
     /* add it to every existing nodes list of queues */
@@ -17,18 +17,19 @@ struct window *addnode(char name[])
     return append(nodelist, name);
 }
 
-/* append a queuelist to a window */
-struct queuelist *qlappend(struct window *w, char name[])
+/* given a node, and a name for our destination entry, add
+ an RTE for the destination so our node knows about it */
+struct routing_table_entry *rtappend(struct node *w, char name[])
 {
-    struct queuelist *tmp;
-    struct queuelist *new;
+    struct routing_table_entry *tmp;
+    struct routing_table_entry *new;
     
     tmp = w->qlist;
         
-    new = malloc(sizeof(struct queuelist));
+    new = malloc(sizeof(struct routing_table_entry));
     
-    new->sendq = malloc(sizeof(struct queue));
-    new->recvq = malloc(sizeof(struct queue));
+    new->sendq = malloc(sizeof(struct window));
+    new->recvq = malloc(sizeof(struct window));
     
     /* initialize values for the queue */
     new->sendq->head = NULL;
@@ -62,7 +63,7 @@ struct queuelist *qlappend(struct window *w, char name[])
         {
             if(strcmp(tmp->name, name) == 0)
             {
-                printf("Qlist already exists for node: %s\n", name);
+                printf("RTE already exists for node: %s\n", name);
                 return NULL;
             }
             
@@ -80,8 +81,9 @@ struct queuelist *qlappend(struct window *w, char name[])
     return new;
 }
 
-/* append a window to the list */
-struct window *append(struct list *l, char name[])
+/* given our (global) list of nodes, append a new node */
+/* todo-remove it from handling RTE's */
+struct node *append(struct list *l, char name[])
 {
     /* fail if l is null */
     if(l == NULL)
@@ -90,7 +92,7 @@ struct window *append(struct list *l, char name[])
         return NULL;
     }
     
-    struct window *tmp = l->head;
+    struct node *tmp = l->head;
     
     /* otherwise there is an el, append to the end */
     while(tmp != NULL)
@@ -109,12 +111,12 @@ struct window *append(struct list *l, char name[])
     while(tmp != NULL)
     {
         /* for every node, append an entry for this new node */
-        qlappend(tmp, name);
+        rtappend(tmp, name);
         
         tmp = tmp->next;
     }
     
-    struct window *w = malloc(sizeof(struct window));
+    struct node *w = malloc(sizeof(struct node));
     
     w->next = NULL;
     
@@ -141,7 +143,7 @@ struct window *append(struct list *l, char name[])
         /* skip the last one because it is the one we are adding as
          we speak */
         if(tmp->next != NULL)
-            qlappend(w, tmp->name);
+            rtappend(w, tmp->name);
         
         tmp = tmp->next;
     }
@@ -160,28 +162,31 @@ struct window *append(struct list *l, char name[])
 /* given a node name, get it's corresponding port */
 int getportfromname(char name[])
 {
-    struct window *w = getwindowfromname(name);
+    struct node *w = getnodefromname(name);
     if (w == NULL)
         return -1;
     return w->port;
 }
 
 /* give them an ack number to use, and increment so we
- don't reuse */
-int reqack(struct queue *q)
+ don't reuse. you would only call on sending. receiving
+ acks are handled when you actually receive an ack (the
+ ack number goes up */
+int reqack(struct window *q)
 {
     int tmp = q->cur;
     q->cur = plusone(q->cur);
     return tmp;
 }
 
-/* prints all the queue elements then the size */
-void printqueue(struct queue *q)
+/* prints all the packets currently buffered in the
+ window and prints out the window's current (true) size*/
+void printwindow(struct window *q)
 {
     if(q == NULL)
         return;
     
-    struct qel *el = q->head;
+    struct packet *el = q->head;
     
     while(el != NULL)
     {
@@ -194,29 +199,33 @@ void printqueue(struct queue *q)
     return;
 }
 
-/* print a list values */
+/* print out all nodes in a list, as well as all RTE's
+ for each node */
 void printlist(struct list *l)
 {
     if(l == NULL)
         return;
     
-    struct window *w = l->head;
+    struct node *w = l->head;
     
     while(w != NULL)
     {
-        printf("Window [%s]\n", w->name);
-        struct queuelist *ql = w->qlist;
+        printf("Node [%s]\n", w->name);
+        struct routing_table_entry *ql = w->qlist;
         
         while(ql != NULL)
         {
-            printf("- QL [%s]\n", ql->name);
-            printf("--------------------\nSendq sz [%d - %d]:\n",
-                   ql->sendq->first, ql->sendq->last);
-            printqueue(ql->sendq);
-            printf("--------------------\nRecvq sz [%d - %d]:\n",
-                   ql->recvq->first, ql->recvq->last);
-            printqueue(ql->recvq);
-            printf("--------------------\n");
+            printf("- RTE [%s]\n", ql->name);
+            if(DEBUGWINDOWS)
+            {
+                printf("--------------------\nSendq sz [%d - %d]:\n",
+                       ql->sendq->first, ql->sendq->last);
+                printwindow(ql->sendq);
+                printf("--------------------\nRecvq sz [%d - %d]:\n",
+                       ql->recvq->first, ql->recvq->last);
+                printwindow(ql->recvq);
+                printf("--------------------\n");
+            }
             
             ql = ql->next;
         }
@@ -226,7 +235,7 @@ void printlist(struct list *l)
     return;
 }
 
-/* does a come before b wrt first */
+/* returns true if a comes before b in the sliding window */
 int comesfirst(int first, int a, int b)
 {
     int count = 0;
@@ -246,17 +255,18 @@ int comesfirst(int first, int a, int b)
     exit(1);
 }
 
-//enqueue function, manages all the little things
-int enqueue(struct queue *q, char* msg)
+/* buffer a message into the window passed in. enqueue
+ it in order based on acknumber */
+int enqueue(struct window *q, char* msg)
 {
-    struct qel *el;
+    struct packet *el;
     
     /* force the enqueue to be in order */
     
 	if(q->sz >= q->max)
 		return -1; // queue is full
 	
-	struct qel *e = malloc(sizeof(struct qel));
+	struct packet *e = malloc(sizeof(struct packet));
 	
 	if(e == NULL)
 		return -1;
@@ -329,11 +339,10 @@ int enqueue(struct queue *q, char* msg)
 	return 0;
 }
 
-/* dequeue takes an el out and frees it, but returns the string of the element
- in the queue */
-struct qel *dequeue(struct queue *q)
+/* remove and return the "head" packet in the window */
+struct packet *dequeue(struct window *q)
 {
-    struct qel *temp;
+    struct packet *temp;
     
 	if(q == NULL || q->head == NULL)
 		return NULL;
@@ -351,13 +360,14 @@ struct qel *dequeue(struct queue *q)
 	return temp;
 }
 
-/* dequeue an element in specific */
-struct qel *dequeue_el(struct queue *q, struct qel *el)
+/* remove and return a specific packet from the window */
+/* not currently used */
+struct packet *dequeue_el(struct window *q, struct packet *el)
 {
     if(q == NULL || el == NULL)
         return NULL;
     
-    struct qel *temp = q->head;
+    struct packet *temp = q->head;
     
     /* validate the element is in the queue */
     while(temp != NULL && temp != el)
@@ -394,8 +404,8 @@ struct qel *dequeue_el(struct queue *q, struct qel *el)
     return el;
 }
 
-/* gets the address for a given udp port to send to */
-void getaddr(struct window *w)
+/* sets up the address a node will be using */
+void getaddr(struct node *w)
 {
     char portchar[8];
     struct addrinfo hints, *info;
@@ -422,7 +432,7 @@ void getaddr(struct window *w)
     return;
 }
 
-/* call from a thread to bind to it's designated port */
+/* create the socket for a node to send from */
 int setupmyport(char name[])
 {
     char portchar[8];
@@ -459,10 +469,10 @@ int setupmyport(char name[])
     return sock;
 }
 
-/* get the whole window given a nodes name */
-struct window *getwindowfromname(char name[])
+/* get the node given it's name */
+struct node *getnodefromname(char name[])
 {
-    struct window *w = nodelist->head;
+    struct node *w = nodelist->head;
     
     while(w != NULL)
     {
@@ -481,7 +491,7 @@ struct window *getwindowfromname(char name[])
 /* get the address to send to for a node from it's name */
 struct sockaddr *getaddrfromname(char name[])
 {
-    struct window* w = getwindowfromname(name);
+    struct node* w = getnodefromname(name);
     if (w == NULL)
         return NULL;
     return w->addr;
@@ -490,7 +500,7 @@ struct sockaddr *getaddrfromname(char name[])
 /* get the socket from the name */
 int getsockfromname(char name[])
 {
-    struct window* w = getwindowfromname(name);
+    struct node* w = getnodefromname(name);
     if (w == NULL)
         return -1;
     return w->socket;
@@ -510,6 +520,7 @@ void sendudp(char *src, char *msg, char *dest)
 {
     int sock = getsockfromname(src);
     struct sockaddr *to = getaddrfromname(dest);
+    
     /* run probability to drop packet */
     int rng = rand() % 100;
     if(rng >= DROPPROB)
@@ -522,16 +533,16 @@ void sendudp(char *src, char *msg, char *dest)
     return;
 }
 
-/* retreive a queuelist from giving the src and dest */
-struct queuelist *getql(char *src, char *dest)
+/* retreive a RTE from giving the src and dest */
+struct routing_table_entry *get_routing_table_entry(char *src, char *dest)
 {
-    struct window *w = nodelist->head;
+    struct node *w = nodelist->head;
     
     while(w != NULL)
     {
         if(strcmp(w->name, src) == 0)
         {
-            struct queuelist *ql = w->qlist;
+            struct routing_table_entry *ql = w->qlist;
             
             while(ql != NULL)
             {
@@ -543,32 +554,14 @@ struct queuelist *getql(char *src, char *dest)
                 ql = ql->next;
             }
             
-            printf("No node found for dest!\n");
+            printf("No RTE found for dest!\n");
             return NULL;
         }
         w = w->next;
     }
     
-    printf("Node node found for source!\n");
+    printf("No node found for source!\n");
     return NULL;
-}
-
-void fakeoutside(int first, int last, int acknum)
-{
-    if(last > first)
-    {
-        if(acknum < first || acknum > last)
-            printf("[%d - %d] (%d) OUTSIDE!\n", first, last, acknum);
-        else
-            printf("[%d - %d] (%d) INSIDE!\n", first, last, acknum);
-    }
-    else
-    {
-        if(acknum < first && acknum > last)
-            printf("[%d - %d] (%d) OUTSIDE!\n", first, last, acknum);
-        else
-            printf("[%d - %d] (%d) INSIDE!\n", first, last, acknum);
-    }
 }
 
 /* temp main function */
@@ -583,8 +576,8 @@ int main()
     char message0[BUFSIZE], message1[BUFSIZE];
     
     /* LETS SEND ON B TO A */
-    struct queuelist *ql = getql("NodeA", "NodeB");
-    struct queue *q = ql->sendq;
+    struct routing_table_entry *ql = get_routing_table_entry("NodeA", "NodeB");
+    struct window *q = ql->sendq;
     
     sprintf(message0, "%d`NodeA`NodeB`Message0\n", reqack(q));
     sprintf(message1, "%d`NodeA`NodeB`Message1\n", reqack(q));

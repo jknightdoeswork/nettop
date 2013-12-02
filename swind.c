@@ -6,7 +6,7 @@
 
 /* increment first and last for a given queue because we
  received one in order */
-void incr(struct queue *q)
+void incr(struct window *q)
 {
     if(++(q->first) == QUEUESIZE)
         q->first = 0;
@@ -26,7 +26,7 @@ int plusone(int i)
 }
 
 /* check if an acknum is outside of the range of the window */
-int outside(struct queue *q, int acknum)
+int outside(struct window *q, int acknum)
 {
     int first = q->first, last = q->last;
     
@@ -93,9 +93,9 @@ int interpret(char *msg)
 }
 
 /* clear all elements in the queue that are now in order */
-void clearq(struct queuelist *ql, int type)
+void clearq(struct routing_table_entry *ql, int type)
 {
-    struct queue *q;
+    struct window *q;
     
     switch(type)
     {
@@ -108,7 +108,7 @@ void clearq(struct queuelist *ql, int type)
             break;
     }
     
-    struct qel *el = q->head;
+    struct packet *el = q->head;
     
     while(el != NULL)
     {
@@ -126,10 +126,10 @@ void clearq(struct queuelist *ql, int type)
             else
             {
                 /* a true message so we need to handle it */
-                struct qel *el = dequeue(q);
+                struct packet *el = dequeue(q);
                 
                 struct msgtok *tok = tokenmsg(el->msg);
-                struct queuelist *ql = getql(tok->dest, tok->src);
+                struct routing_table_entry *ql = get_routing_table_entry(tok->dest, tok->src);
                 
                 char returnmsg[BUFSIZE];
                 
@@ -162,9 +162,9 @@ void clearq(struct queuelist *ql, int type)
 }
 
 /* check if the message is a duplicate */
-int ihavemsg(struct queue *q, int ack)
+int ihavemsg(struct window *q, int ack)
 {
-    struct qel *el = q->head;
+    struct packet *el = q->head;
     
     while(el != NULL)
     {
@@ -178,7 +178,7 @@ int ihavemsg(struct queue *q, int ack)
 }
 
 /* check if the message is in order, if not, send a nack */
-int msginorder(struct queue *q, int ack)
+int msginorder(struct window *q, int ack)
 {
     if(ack == q->first)
         return 1;
@@ -312,9 +312,9 @@ void sendbacknack(char *msg, int out)
 }
 
 /* send back nacks for all messages outstanding */
-void sendnacks(struct queue *q, char *msg)
+void sendnacks(struct window *q, char *msg)
 {
-    struct qel *el = q->head;
+    struct packet *el = q->head;
     int outack = q->first;
     
     struct msgtok *tok = tokenmsg(msg);
@@ -352,13 +352,13 @@ void handleack(char *name, char *msg)
     struct msgtok *tok = tokenmsg(msg);
     
     /* the source of the message is the "dest" of my queue */
-    struct queuelist *ql = getql(name, tok->src);
+    struct routing_table_entry *ql = get_routing_table_entry(name, tok->src);
     
     /* now it's an ack confirming our message, so we want
      the sendq */
-    struct queue *q = ql->sendq;
+    struct window *q = ql->sendq;
     
-    struct qel *el = q->head;
+    struct packet *el = q->head;
     int ack = tok->acknum;
     
     /* find the message and mark it received */
@@ -378,7 +378,7 @@ void handleack(char *name, char *msg)
         printf("[%s]Error finding message corresponding to ack# [%d]\n",
                name, ack);
         
-        printqueue(q);
+        printwindow(q);
         exit(1);
     }
     
@@ -401,13 +401,13 @@ void handlenack(char *name, char *msg)
         exit(1);
     }
     
-    struct queuelist *ql = getql(tok->dest, tok->src);
+    struct routing_table_entry *ql = get_routing_table_entry(tok->dest, tok->src);
     
     /* it is a nack so I want to re-send outstanding message which will
      be in my sendq */
-    struct queue *q = ql->sendq;
+    struct window *q = ql->sendq;
     
-    struct qel *el = q->head;
+    struct packet *el = q->head;
     
     while(el != NULL)
     {
@@ -451,10 +451,10 @@ void handlemsg(char *name, char *msg)
     
     /* reverse dest and src because we are receiving from them so
      we want my buffer */
-    struct queuelist *ql = getql(tok->dest, tok->src);
+    struct routing_table_entry *ql = get_routing_table_entry(tok->dest, tok->src);
     
     /* this is a real message so we want to receive it */
-    struct queue *q = ql->recvq;
+    struct window *q = ql->recvq;
     
     int ack = tok->acknum;
     
