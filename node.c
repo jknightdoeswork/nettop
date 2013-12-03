@@ -24,7 +24,7 @@ struct routing_table_entry *rtappend(struct node *w, char name[], char through[]
     struct routing_table_entry *tmp;
     struct routing_table_entry *new;
     
-    tmp = w->qlist;
+    tmp = w->routing_table;
     
     /* construct the rt entry */    
     new = malloc(sizeof(struct routing_table_entry));
@@ -56,7 +56,7 @@ struct routing_table_entry *rtappend(struct node *w, char name[], char through[]
     new->next = NULL;
     if(tmp == NULL) /* no entries */
     {
-        w->qlist = new;
+        w->routing_table = new;
             
         new->prev = NULL;
     }
@@ -190,7 +190,7 @@ void printlist(struct list *l)
     while(w != NULL)
     {
         printf("Node [%s]\n", w->name);
-        struct routing_table_entry *ql = w->qlist;
+        struct routing_table_entry *ql = w->routing_table;
         
         while(ql != NULL)
         {
@@ -520,7 +520,7 @@ struct routing_table_entry *get_routing_table_entry(char *src, char *dest)
     {
         if(strcmp(w->name, src) == 0)
         {
-            struct routing_table_entry *ql = w->qlist;
+            struct routing_table_entry *ql = w->routing_table;
             
             while(ql != NULL)
             {

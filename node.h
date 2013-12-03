@@ -91,7 +91,7 @@ struct routing_table_entry
 /* is the window used for reliable transfer between nodes */
 struct node
 {
-    struct routing_table_entry *qlist;
+    struct routing_table_entry *routing_table;
     char name[BUFSIZE];
     int port, socket;
     
