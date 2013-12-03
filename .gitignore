@@ -16,6 +16,8 @@
 *.exe
 *.out
 *.app
+
+*.swp
 node
 parser
 

@@ -3,18 +3,22 @@ CC=gcc
 #FLAGS
 CFLAGS=-Wall -Wextra
 
-all: nodes
+all: node
 
 udp: proxy server
 
-nodes: node.c swind.c
-	$(CC) $(CFLAGS) node.c swind.c -o node; chmod +x node
+node.o: node.c
+	$(CC) $(CFLAGS) -c node.c
+
+swind.o: swind.c
+	$(CC) $(CFLAGS) -c swind.c
+
+node: node.o swind.o parser.o
+	$(CC) $(CFLAGS) -o node node.o swind.o parser.o
 
 parser.o: parser.c
 	$(CC) $(CFLAGS) -c parser.c
 
-parser: parser.o
-	$(CC) -o parser parser.o
-
 clean:
 	rm -rf *.o node parser
+

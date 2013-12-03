@@ -118,13 +118,14 @@ enum globalenums
 /* FUNCTIONS */
 
 /* for node.c */
-struct routing_table_entry *rtappend(struct node *w, char name[]);
+struct routing_table_entry *rtappend(struct node* nodea, char name[], char through[], int weight);
 struct node *append(struct list *l, char name[]);
 void printwindow(struct window *q);
 int enqueue(struct window *q, char* msg);
 int comesfirst(int first, int a, int b);
 struct packet *dequeue(struct window *q);
 struct node *addnode(char name[]);
+void addedge(char nodeaname[], char nodebname[], int weight);
 int reqack(struct window *q);
 void getaddr(struct node *w);
 int getportfromname(char name[]);

@@ -19,19 +19,23 @@ struct node *addnode(char name[])
 
 /* given a node, and a name for our destination entry, add
  an RTE for the destination so our node knows about it */
-struct routing_table_entry *rtappend(struct node *w, char name[])
+struct routing_table_entry *rtappend(struct node *w, char name[], char through[], int weight)
 {
     struct routing_table_entry *tmp;
     struct routing_table_entry *new;
     
     tmp = w->qlist;
-        
-    new = malloc(sizeof(struct routing_table_entry));
     
+    /* construct the rt entry */    
+    new = malloc(sizeof(struct routing_table_entry));
+    new->weight = weight;
+    strcpy(new->name, name);
+    strcpy(new->through, through);
+
     new->sendq = malloc(sizeof(struct window));
     new->recvq = malloc(sizeof(struct window));
     
-    /* initialize values for the queue */
+    /* initialize the queues */
     new->sendq->head = NULL;
     new->sendq->tail = NULL;
     new->sendq->sz = 0;
@@ -48,9 +52,8 @@ struct routing_table_entry *rtappend(struct node *w, char name[])
     new->recvq->last = SLIDENSIZE-1;
     new->recvq->cur = 0;
     
+    /* do the linked list insertion */
     new->next = NULL;
-    strcpy(new->name, name);
-    
     if(tmp == NULL) /* no entries */
     {
         w->qlist = new;
@@ -81,10 +84,21 @@ struct routing_table_entry *rtappend(struct node *w, char name[])
     return new;
 }
 
+/* Adds an edge to node a and node b's routing tables of weight weight */
+void addedge(char* nodeaname, char* nodebname, int weight)
+{
+    struct node* nodea = getnodefromname(nodeaname);
+    rtappend(nodea, nodebname, nodebname, weight);
+    
+    struct node* nodeb = getnodefromname(nodebname);
+    rtappend(nodeb, nodeaname, nodeaname, weight);
+}
+
 /* given our (global) list of nodes, append a new node */
 /* todo-remove it from handling RTE's */
 struct node *append(struct list *l, char name[])
 {
+
     /* fail if l is null */
     if(l == NULL)
     {
@@ -92,32 +106,18 @@ struct node *append(struct list *l, char name[])
         return NULL;
     }
     
-    struct node *tmp = l->head;
-    
+    /* check if name already exists */ 
     /* otherwise there is an el, append to the end */
-    while(tmp != NULL)
-    {
-        if(strcmp(tmp->name, name) == 0)
-        {
-            printf("Already have an entry for %s\n", name);
-            return NULL;
-        }
-        
-        tmp = tmp->next;
+    struct node *nodecheck = getnodefromname(name);
+    if(nodecheck != NULL) 
+    {   
+        return nodecheck;
     }
-    
-    tmp = l->head;
-    
-    while(tmp != NULL)
-    {
-        /* for every node, append an entry for this new node */
-        rtappend(tmp, name);
-        
-        tmp = tmp->next;
-    }
-    
+
     struct node *w = malloc(sizeof(struct node));
-    
+    strcpy(w->name, name);
+    w->port = globalport++;
+    w->socket = setupmyport(name);
     w->next = NULL;
     
     if(l->tail != NULL)
@@ -131,30 +131,8 @@ struct node *append(struct list *l, char name[])
     {
         l->head = w;
     }
-    
-    tmp = l->head;
-    
-    /* build the new window's list to have entries for all
-     existing nodes and add an entry with all existing nodes
-     for the new node */
-    while(tmp != NULL)
-    {
-        /* for the new node, add entries for all existing nodes */
-        /* skip the last one because it is the one we are adding as
-         we speak */
-        if(tmp->next != NULL)
-            rtappend(w, tmp->name);
-        
-        tmp = tmp->next;
-    }
-    
-    strcpy(w->name, name);
-    
-    w->port = globalport++;
-    
+     
     getaddr(w); /* port to make sense */
-    
-    w->socket = setupmyport(name);
     
     return w;
 }
@@ -427,7 +405,7 @@ void getaddr(struct node *w)
         printf("Error getting address info on port: %s\n", portchar);
         exit(1);
     };
-    
+    // TODO FIX MEMORY LEAK: call freeaddrinfo 
     w->addr = info->ai_addr;
     return;
 }
