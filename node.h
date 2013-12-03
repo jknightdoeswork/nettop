@@ -135,7 +135,7 @@ void sendudp(char *src, char *msg, char *dest);
 int getsockfromname(char name[]);
 struct node *getnodefromname(char name[]);
 int setupmyport(char name[]);
-struct routing_table_entry *get_routing_table_entry(char *src, char *dest);
+struct routing_table_entry *getroutingtableentry(struct node *src, char *dest);
 
 /* for swind.c */
 int plusone(int i);
