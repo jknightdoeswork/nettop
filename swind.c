@@ -139,10 +139,11 @@ void clearwindow(struct routing_table_entry *ql, int type)
                 sprintf(returnmsg, "%d`%s`%s`Message %d received!\n",
                         reqack(ql->sendq), tok->dest, tok->src, tok->acknum);
                 
+		//temp do not send message back
                 /* enqueue it in our sendq to the destination */
-                enqueue(ql->sendq, returnmsg);
+                //enqueue(ql->sendq, returnmsg);
                 
-                sendudp(tok->dest, returnmsg, tok->src);
+                //sendudp(tok->dest, returnmsg, tok->src);
                 
                 /* free the memory we were using */
                 freetok(tok);
@@ -295,8 +296,12 @@ void sendbackack(char *msg)
     /* reverse dest and src because we are sending back to them */
     sprintf(ackmsg, "%d`%s`%s`+", tok->acknum, tok->dest, tok->src);
     
-    /* send on my socket to the address of the source */
-    sendudp(tok->dest, ackmsg, tok->src);
+    struct routing_table_entry *rte;
+    rte = get_routing_table_entry(tok->dest, tok->src);
+    
+    /* enqueue it to my delay queue so it waits
+     the appropriate length of time before being sent */
+    enqueue(rte->delayq, ackmsg);
     
     freetok(tok);
     return;
@@ -311,8 +316,12 @@ void sendbacknack(char *msg, int out)
     /* reverse dest and src */
     sprintf(nackmsg, "%d`%s`%s`-", out, tok->dest, tok->src);
     
-    /* send */
-    sendudp(tok->dest, nackmsg, tok->src);
+    struct routing_table_entry *rte;
+    rte = get_routing_table_entry(tok->dest, tok->src);
+    
+    /* enqueue it to my delay queue so it waits
+     the appropriate length of time before being sent */
+    enqueue(rte->delayq, nackmsg);
     
     freetok(tok);
     return;
@@ -419,7 +428,8 @@ void handlenack(char *name, char *msg)
     
     struct msgtok *tok = tokenmsg(msg);
     
-    /* forward it if it isn't intended for me */
+    /* forward it if it isn't intended for me, delays were calculated
+     by the main node */
     if(!iamdest(name, msg))
     {
         /* i am not the destination so forward it towards the
@@ -431,7 +441,8 @@ void handlenack(char *name, char *msg)
         return;
     }
     
-    struct routing_table_entry *ql = get_routing_table_entry(tok->dest, tok->src);
+    struct routing_table_entry *ql;
+    ql = get_routing_table_entry(tok->dest, tok->src);
     
     if(ql == NULL)
 	    return;
@@ -447,11 +458,14 @@ void handlenack(char *name, char *msg)
         /* if the message corresponds to the nack, resend it */
         if(el->acknum == tok->acknum)
         {
-            /* reverse dest and source because it's originating from me */
-            sendudp(tok->dest, el->msg, tok->src);
+            /* the message is already in our queue, just
+             adjust a few values to prompt the thread
+             to resend it when delay is up */
+            el->enqT = time(NULL);
+            el->sent = 0;
             break;
         }
-                    
+        
         el = el->next;
     }
     
@@ -468,6 +482,7 @@ void handlemsg(char *name, char *msg)
     printf("Received a message:\n[#%d][%s][%s]\n%s-----------\n",
            tok->acknum, tok->src, tok->dest, tok->pay);
     
+    /* delays were calculated by the main node */
     if(!iamdest(name, msg))
     {
         /* i am not the destination so forward it towards the
@@ -484,7 +499,8 @@ void handlemsg(char *name, char *msg)
     
     /* reverse dest and src because we are receiving from them so
      we want my buffer */
-    struct routing_table_entry *ql = get_routing_table_entry(tok->dest, tok->src);
+    struct routing_table_entry *ql;
+    ql = get_routing_table_entry(tok->dest, tok->src);
     
     if(ql == NULL)
 	    return;

@@ -14,7 +14,12 @@ struct node *addnode(char name[])
     /* add it to every existing nodes list of queues */
     /* give it queues for all existing nodes */
     /* append handles it all because append is magic */
-    return append(nodelist, name);
+    
+    struct node *n = append(nodelist, name);
+    
+    spawnthread(n);
+    
+    return n;
 }
 
 /* given a node, and a name for our destination entry, add
@@ -34,6 +39,7 @@ struct routing_table_entry *rtappend(struct node *w, char name[], char through[]
 
     new->sendq = malloc(sizeof(struct window));
     new->recvq = malloc(sizeof(struct window));
+    new->delayq = malloc(sizeof(struct window));
     
     /* initialize the queues */
     new->sendq->head = NULL;
@@ -51,6 +57,14 @@ struct routing_table_entry *rtappend(struct node *w, char name[], char through[]
     new->recvq->first = 0;
     new->recvq->last = SLIDENSIZE-1;
     new->recvq->cur = 0;
+    
+    new->delayq->head = NULL;
+    new->delayq->tail = NULL;
+    new->delayq->sz = 0;
+    new->delayq->max = INT_MAX;
+    new->delayq->first = 0;
+    new->delayq->last = INT_MAX;
+    new->delayq->cur = 0;
     
     /* do the linked list insertion */
     new->next = NULL;
@@ -98,7 +112,6 @@ void addedge(char* nodeaname, char* nodebname, int weight)
 /* todo-remove it from handling RTE's */
 struct node *append(struct list *l, char name[])
 {
-
     /* fail if l is null */
     if(l == NULL)
     {
@@ -118,6 +131,7 @@ struct node *append(struct list *l, char name[])
     strcpy(w->name, name);
     w->port = globalport++;
     w->next = NULL;
+    w->dead=0;
     
     if(l->tail != NULL)
         l->tail->next = w;
@@ -256,6 +270,7 @@ int enqueue(struct window *q, char* msg)
     
     e->acknum = tok->acknum;
     e->received = 0;
+    e->sent = 0;
     
     freetok(tok);
     
@@ -497,7 +512,19 @@ void initialize()
 void sendudp(char *src, char *msg, char *dest)
 {
     int sock = getsockfromname(src);
-    struct sockaddr *to = getaddrfromname(dest);
+    
+    /* get the entry for what node it goes through and
+     send to intermediate node */
+    struct routing_table_entry *rte;
+    rte = get_routing_table_entry(src, dest);
+    
+    if(rte == NULL)
+    {
+        fprintf(stderr, "Error, no connection to [%s] found!\n", dest);
+        return;
+    }
+    
+    struct sockaddr *to = getaddrfromname(rte->through);
     
     /* run probability to drop packet */
     int rng = rand() % 100;
@@ -542,16 +569,197 @@ struct routing_table_entry *get_routing_table_entry(char *src, char *dest)
     return NULL;
 }
 
+/* check all of my packets for if they should be sent based off of their delay
+ * or if they should be sent based off of the ack timing out (no confirmation) */
+void checktimeouts(struct node *n)
+{
+    int doacks = 0;
+	struct routing_table_entry *rte = n->qlist;
+    
+    time_t curtime = time(NULL);
+	
+	/* check all RTEs for outstanding packets, either delay, or timeout */
+	while(rte != NULL)
+	{
+		struct packet *p = rte->sendq->head;
+		
+		/* check all packets to see if outstanding, ensure
+         we enter this once to check the ackq */
+		while(p != NULL || !doacks)
+		{
+            /* once p is null, we've checked all packets, so
+             switch to start doing acks */
+            if(p == NULL && !doacks)
+            {
+                doacks = 1;
+                p = rte->delayq->head;
+                
+                /* if there were no packets in the delayq, just
+                 immediately break */
+                if(p == NULL)
+                    break;
+            }
+            
+			/* check if the time is up, and if it hasn't already
+			 * been confirmed received, and if this is the first
+			 time sending it, ie send based on delay */
+			if(p->enqT < curtime - rte->weight &&
+				!(p->received) && !(p->sent))
+			{
+				/* re-send because timeout */
+				printf("DELAY EXPIRED\n");
+				/* mark the packet as having been sent */
+				p->sent = 1;
+				/* send it */
+				sendudp(n->name, p->msg, rte->name);
+				/* reset the timer */
+				p->enqT = curtime;
+                
+                /* if we are just checking delays, once we've sent
+                 it, since no reliable transfer, just remove it
+                 from our queue */
+                if(doacks)
+                {
+                    struct packet *t = p;
+                    p = p->next;
+                    /* free and dequeue the packet since we no
+                     longer need it */
+                    free(dequeue_el(rte->delayq, t));
+                }
+			}
+			/* if it has been sent, then check the timeout on it
+			 * and resend if timeout expires */
+			else if(p->sent && p->enqT < curtime - TIMEOUT)
+			{
+				printf("TIMEOUT OCCURRED\n");
+				p->sent = 0;
+				p->enqT = curtime;
+			}
+            
+            /* if we are only checking delays, then it is handled
+             when we dequeue and free the packet so don't do anything
+             if we aren't doing packets we need to move */
+            if(!doacks)
+                p = p->next;
+		}
+		rte = rte->next;
+	}
+	
+	return;
+}
+
+/* main accept loop for every thread */
+void *threadloop(void *arg)
+{
+	char *name = (char *)arg;
+	
+	struct node *me = getnodefromname(name);
+	
+	if(me == NULL)
+	{
+		fprintf(stderr, "Fatal error!\n");
+		exit(1);
+	}
+	
+	while(!me->dead)
+	{
+		checktimeouts(me);
+		receivemsg(me->name);
+	}
+	
+	return NULL;
+}
+
+/* given a node create a thread for it */
+void spawnthread(struct node *n)
+{
+	if(pthread_create(&(n->thread), NULL, threadloop, n->name))
+	{
+		fprintf(stderr, "Error creating threads.\n");
+		exit(1);
+	}
+	
+	return;
+}
+
+/* signal a thread to stop execution */
+void sigkillthread(char name[])
+{
+	struct node *n = getnodefromname(name);
+	
+	/* return error if node didn't exist */
+	if(n == NULL)
+		return;
+	
+	n->dead = 1;
+	
+	return;
+}
+
+/* kill all running threads */
+void sigkillall()
+{
+	struct node *n = nodelist->head;
+	
+	/* loop through all nodes and kill their thread */
+	while(n!=NULL)
+	{
+		n->dead = 1;
+		
+		n = n->next;
+	}
+	
+	return;
+}
+
+void displaymenu()
+{
+	printf("\n\n\nEnter 0 to exit\n");
+	printf("Enter 1 to add a node\n");
+	printf("Enter 2 to remove a node\n");
+	printf("Enter 3 to add an edge\n");
+	printf("Enter 4 to modify an edge\n");
+	printf("Enter 5\n");
+	
+	return;
+}
+
+void usersendmessage()
+{
+	char src[BUFSIZE], dest[BUFSIZE], msg[BUFSIZE];
+	printf("Enter the name of the source node: ");
+	scanf("%s", src);
+	printf("Enter the name of the destination node: ");
+	scanf("%s", dest);
+	printf("Enter the message to send: ");
+	scanf("%s", msg);
+}
+
+void userloop()
+{
+	char c;
+	
+	while(c != '0')
+	{
+		c = getchar();
+		getchar();
+	}
+	
+	return;
+}
+
 /* temp main function */
 int main()
 {
+	/* initialize and create the nodes */
     initialize();
     addnode("NodeA");
     addnode("NodeB");
+    addnode("NodeC");
     
-    addedge("NodeA", "NodeB", 1);
+    addedge("NodeA", "NodeB", 3);
     
-    //printlist(nodelist);
+    printf("Control in main!\n");
     
     char message0[BUFSIZE], message1[BUFSIZE];
     
@@ -565,12 +773,24 @@ int main()
     /* enqueue it and send it */
     enqueue(q, message1);
     enqueue(q, message0);
+    
+    /* loop for user control */
+    userloop();
+    
+    /* kill all threads and shut down */
+    sigkillall();
+    printf("Killed all threads\n");
+    pthread_exit(NULL);
+    
+    //printlist(nodelist);
+    
+    
     sendudp("NodeA", message1, "NodeB");
     
     int i=0;
     
     while(i<100)
-    {
+    {/*
         if(receivemsg("NodeA") > 0)
         {
             printf("\n\n\n\n\n\n\n\n");
@@ -582,14 +802,18 @@ int main()
         
         if(receivemsg("NodeB") > 0)
         {
-            receivemsg("NodeB");
             printf("\n\n\n\n\n\n\n\n");
             printlist(nodelist);
             printf("\n\n\n\n\n\n\n\n");
             
             i++;
-        }
+        }*/
+        i++;
     }
+    
+    
+    
+    pthread_exit(NULL);
     
     return 0;
 }

@@ -24,11 +24,14 @@
 #include <sys/wait.h>
 #include <signal.h>
 #include <fcntl.h>
+#include <pthread.h>
+#include <limits.h>
 
 /* DEFINES */
 
 #define DEBUGWINDOWS 1
 
+#define TIMEOUT 10
 #define DROPPROB 0
 #define QUEUESIZE 20
 #define SLIDENSIZE 8
@@ -58,6 +61,9 @@ struct packet
     int acknum;
     int received;
     
+    /* sent signifies if it has ever been attempted to send */
+    int sent;
+    
     struct packet *next, *prev;
 };
 
@@ -79,6 +85,7 @@ struct window
 struct routing_table_entry
 {
     struct window *sendq, *recvq;
+    struct window *delayq;
     char name[BUFSIZE];
     //planning
     char through[BUFSIZE];
@@ -94,6 +101,9 @@ struct node
     struct routing_table_entry *qlist;
     char name[BUFSIZE];
     int port, socket;
+    
+    pthread_t thread;
+    int dead;
     
     struct sockaddr *addr;
     
@@ -136,6 +146,11 @@ int getsockfromname(char name[]);
 struct node *getnodefromname(char name[]);
 int setupmyport(char name[]);
 struct routing_table_entry *get_routing_table_entry(char *src, char *dest);
+void spawnthread(struct node *n);
+void spawnallthreads();
+void sigkillthread(char name[]);
+void sigkillall();
+void *mainloop(void *arg);
 
 /* for swind.c */
 int plusone(int i);
