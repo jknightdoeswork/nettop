@@ -29,7 +29,7 @@ struct routing_table_entry *rtappend(struct node *w, char name[], char through[]
     struct routing_table_entry *tmp;
     struct routing_table_entry *new;
     
-    tmp = w->qlist;
+    tmp = w->routing_table;
     
     /* construct the rt entry */    
     new = malloc(sizeof(struct routing_table_entry));
@@ -70,7 +70,7 @@ struct routing_table_entry *rtappend(struct node *w, char name[], char through[]
     new->next = NULL;
     if(tmp == NULL) /* no entries */
     {
-        w->qlist = new;
+        w->routing_table = new;
             
         new->prev = NULL;
     }
@@ -204,7 +204,7 @@ void printlist(struct list *l)
     while(w != NULL)
     {
         printf("Node [%s]\n", w->name);
-        struct routing_table_entry *ql = w->qlist;
+        struct routing_table_entry *ql = w->routing_table;
         
         while(ql != NULL)
         {
@@ -516,7 +516,7 @@ void sendudp(char *src, char *msg, char *dest)
     /* get the entry for what node it goes through and
      send to intermediate node */
     struct routing_table_entry *rte;
-    rte = get_routing_table_entry(src, dest);
+    rte = getroutingtableentry(getnodefromname(src), dest);
     
     if(rte == NULL)
     {
@@ -538,34 +538,14 @@ void sendudp(char *src, char *msg, char *dest)
     return;
 }
 
-/* retreive a RTE from giving the src and dest */
-struct routing_table_entry *get_routing_table_entry(char *src, char *dest)
+struct routing_table_entry *getroutingtableentry(struct node *src, char *dest)
 {
-    struct node *w = nodelist->head;
-    
-    while(w != NULL)
+    struct routing_table_entry *iter = src->routing_table;
+    while (iter != NULL)
     {
-        if(strcmp(w->name, src) == 0)
-        {
-            struct routing_table_entry *ql = w->qlist;
-            
-            while(ql != NULL)
-            {
-                if(strcmp(ql->name, dest) == 0)
-                {
-                    return ql;
-                }
-                
-                ql = ql->next;
-            }
-            
-            printf("No RTE found for dest!\n");
-            return NULL;
-        }
-        w = w->next;
+        if (strcmp(iter->name, dest) == 0)
+            return iter;
     }
-    
-    printf("No node found for source!\n");
     return NULL;
 }
 
@@ -574,7 +554,7 @@ struct routing_table_entry *get_routing_table_entry(char *src, char *dest)
 void checktimeouts(struct node *n)
 {
     int doacks = 0;
-	struct routing_table_entry *rte = n->qlist;
+	struct routing_table_entry *rte = n->routing_table;
     
     time_t curtime = time(NULL);
 	
@@ -764,7 +744,7 @@ int main()
     char message0[BUFSIZE], message1[BUFSIZE];
     
     /* LETS SEND ON B TO A */
-    struct routing_table_entry *ql = get_routing_table_entry("NodeA", "NodeB");
+    struct routing_table_entry *ql = getroutingtableentry(getnodefromname("NodeA"), "NodeB");
     struct window *q = ql->sendq;
     
     sprintf(message0, "%d`NodeA`NodeB`Message0\n", reqack(q));

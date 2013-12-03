@@ -129,7 +129,7 @@ void clearwindow(struct routing_table_entry *ql, int type)
                 struct packet *el = dequeue(q);
                 
                 struct msgtok *tok = tokenmsg(el->msg);
-                struct routing_table_entry *ql = get_routing_table_entry(tok->dest, tok->src);
+                struct routing_table_entry *ql = getroutingtableentry(getnodefromname(tok->dest), tok->src);
 		
 		if(ql == NULL)
 			return;
@@ -297,7 +297,7 @@ void sendbackack(char *msg)
     sprintf(ackmsg, "%d`%s`%s`+", tok->acknum, tok->dest, tok->src);
     
     struct routing_table_entry *rte;
-    rte = get_routing_table_entry(tok->dest, tok->src);
+    rte = getroutingtableentry(getnodefromname(tok->dest), tok->src);
     
     /* enqueue it to my delay queue so it waits
      the appropriate length of time before being sent */
@@ -317,7 +317,7 @@ void sendbacknack(char *msg, int out)
     sprintf(nackmsg, "%d`%s`%s`-", out, tok->dest, tok->src);
     
     struct routing_table_entry *rte;
-    rte = get_routing_table_entry(tok->dest, tok->src);
+    rte = getroutingtableentry(getnodefromname(tok->dest), tok->src);
     
     /* enqueue it to my delay queue so it waits
      the appropriate length of time before being sent */
@@ -381,7 +381,7 @@ void handleack(char *name, char *msg)
     }
     
     /* the source of the message is the "dest" of my queue */
-    struct routing_table_entry *ql = get_routing_table_entry(name, tok->src);
+    struct routing_table_entry *ql = getroutingtableentry(getnodefromname(name), tok->src);
     
     if(ql == NULL)
 	    return;
@@ -441,8 +441,7 @@ void handlenack(char *name, char *msg)
         return;
     }
     
-    struct routing_table_entry *ql;
-    ql = get_routing_table_entry(tok->dest, tok->src);
+    struct routing_table_entry *ql = getroutingtableentry(getnodefromname(tok->dest), tok->src);
     
     if(ql == NULL)
 	    return;
@@ -499,8 +498,7 @@ void handlemsg(char *name, char *msg)
     
     /* reverse dest and src because we are receiving from them so
      we want my buffer */
-    struct routing_table_entry *ql;
-    ql = get_routing_table_entry(tok->dest, tok->src);
+    struct routing_table_entry *ql = getroutingtableentry(getnodefromname(tok->dest), tok->src);
     
     if(ql == NULL)
 	    return;
