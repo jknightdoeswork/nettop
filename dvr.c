@@ -15,7 +15,7 @@ void set_interval(int seconds)
 time_t dvr_step(struct node* a, time_t laststep)
 {
     time_t curtime = time(NULL);
-    if (difftime(curtime, laststep) < dvr_interval)
+    if (laststep != -1 && difftime(curtime, laststep) < dvr_interval)
         return laststep;
     
     // send my datas to all neighbours

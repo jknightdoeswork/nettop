@@ -13,7 +13,7 @@ node.o: node.c
 swind.o: swind.c
 	$(CC) $(CFLAGS) -c swind.c
 
-node: node.o swind.o parser.o
+node: node.o swind.o parser.o dvr.o
 	$(CC) $(CFLAGS) -o node node.o swind.o parser.o dvr.o
 
 parser.o: parser.c
