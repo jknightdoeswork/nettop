@@ -117,7 +117,6 @@ struct node *append(struct list *l, char name[])
     struct node *w = malloc(sizeof(struct node));
     strcpy(w->name, name);
     w->port = globalport++;
-    w->socket = setupmyport(name);
     w->next = NULL;
     
     if(l->tail != NULL)
@@ -131,6 +130,8 @@ struct node *append(struct list *l, char name[])
     {
         l->head = w;
     }
+    
+    w->socket = setupmyport(name);
      
     getaddr(w); /* port to make sense */
     
@@ -462,7 +463,6 @@ struct node *getnodefromname(char name[])
         w = w->next;
     }
     
-    fprintf(stderr, "Error getting window for name: %s\n", name);
     return NULL;
 }
 
@@ -548,6 +548,8 @@ int main()
     initialize();
     addnode("NodeA");
     addnode("NodeB");
+    
+    addedge("NodeA", "NodeB", 1);
     
     //printlist(nodelist);
     

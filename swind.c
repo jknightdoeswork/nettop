@@ -130,6 +130,9 @@ void clearwindow(struct routing_table_entry *ql, int type)
                 
                 struct msgtok *tok = tokenmsg(el->msg);
                 struct routing_table_entry *ql = get_routing_table_entry(tok->dest, tok->src);
+		
+		if(ql == NULL)
+			return;
                 
                 char returnmsg[BUFSIZE];
                 
@@ -371,6 +374,9 @@ void handleack(char *name, char *msg)
     /* the source of the message is the "dest" of my queue */
     struct routing_table_entry *ql = get_routing_table_entry(name, tok->src);
     
+    if(ql == NULL)
+	    return;
+    
     /* now it's an ack confirming our message, so we want
      the sendq */
     struct window *q = ql->sendq;
@@ -427,6 +433,9 @@ void handlenack(char *name, char *msg)
     
     struct routing_table_entry *ql = get_routing_table_entry(tok->dest, tok->src);
     
+    if(ql == NULL)
+	    return;
+    
     /* it is a nack so I want to re-send outstanding message which will
      be in my sendq */
     struct window *q = ql->sendq;
@@ -476,6 +485,9 @@ void handlemsg(char *name, char *msg)
     /* reverse dest and src because we are receiving from them so
      we want my buffer */
     struct routing_table_entry *ql = get_routing_table_entry(tok->dest, tok->src);
+    
+    if(ql == NULL)
+	    return;
     
     /* this is a real message so we want to receive it */
     struct window *q = ql->recvq;
