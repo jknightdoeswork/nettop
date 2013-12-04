@@ -18,9 +18,9 @@ void createlogdir()
     time_t curtime;
     time(&curtime);
 
-    //strftime(folderpath, MAXFOLDERSIZE, "logs/%d-%m-%Y-%T", localtime(&curtime));
+    strftime(folderpath, MAXFOLDERSIZE, "logs/%d-%m-%Y-%T", localtime(&curtime));
 
-    sprintf(folderpath, "logs/%d/", (int)curtime);
+    //sprintf(folderpath, "logs/%d/", (int)curtime);
     fprintf(stderr, "about to create folder at path: %s\n", folderpath);
     if ((error = mkdir(folderpath, S_IREAD | S_IEXEC | S_IWRITE)) != 0)
     {

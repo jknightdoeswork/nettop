@@ -164,6 +164,7 @@ void spawnallthreads();
 void sigkillthread(char* name);
 void sigkillall();
 void *mainloop(void *arg);
+void freepacket(struct packet* p);
 
 struct routing_table_entry *getroutingtableentry(struct node *src, char *dest);
 
@@ -184,7 +185,6 @@ int ihavemsg(struct window *q, int ack);
 struct msgtok *tokenmsg(char *msg);
 int interpret(char *msg);
 void freetok(struct msgtok *tok);
-void freepacket(struct packet* p);
 
 /* for dvr.c */
 /* set_interval
