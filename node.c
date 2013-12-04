@@ -887,8 +887,8 @@ int main()
     printf("Letting nodes build their routing tables...\n");
     usleep(25000000);
     
-    //addnode("i");
-    //usleep(2000000);
+    addnode("i");
+    usleep(2000000);
     
     //addnode("j");
     //usleep(2000000);
@@ -896,7 +896,7 @@ int main()
     //usleep(2000000);
     //addnode("p");
     
-    userloop();
+    //userloop();
     
     fclose(file);
     
