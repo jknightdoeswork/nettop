@@ -76,11 +76,12 @@ void handledvrmessage(struct node* nodea, struct msgtok* msg)
     if (acrte == NULL)
     {
         // no existing entry
-        rtappend(nodea, nodecname, nodebname, abcweight, 0);
+        rtappend(nodea, nodecname, nodebname, 0, 0, abcweight);
     }
     else if (acrte->weight > abcweight) 
     {
-        rtappend(nodea, nodecname, nodebname, abcweight, 0);
+	acrte->weight = abcweight;
+	strcpy(acrte->through, nodebname);
     }
 }
 

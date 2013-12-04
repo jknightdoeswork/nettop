@@ -10,7 +10,8 @@ void parse_file(char* filename) {
 	char* temp;
     char* nodeaname;
     char* nodebname;
-    int weight;
+    int delay;
+    int drop;
     size_t tempi2;
     
 	f = fopen(filename, "r");
@@ -27,18 +28,23 @@ void parse_file(char* filename) {
         strcpy(nodeaname, temp);
 
 		temp = strtok(NULL, "-");
-		weight = atoi(temp);		
+		delay = atoi(temp);		
 
-		temp = strtok(NULL, "\n");
+		temp = strtok(NULL, "%");
         nodebname = malloc(strlen(temp)+1);
         bzero(nodebname, strlen(temp)+1);
         strcpy(nodebname, temp);
-		printf("node-weight-node: %s-%d-%s\n", nodeaname, weight, nodebname);
+	
+		temp = strtok(NULL, "\n");
+	drop = atoi(temp);
+	
+		//printf("node-delay-node-drop: %s-%d-%s-%d\n",
+		//       nodeaname, delay, nodebname, drop);
 
         addnode(nodeaname);
         addnode(nodebname);
-        // TODO CALCULATE WEIGHTS
-        addedge(nodeaname, nodebname, weight, 0);
+	
+        addedge(nodeaname, nodebname, delay, drop);
         free(lineptr);
         lineptr = NULL;
 	}

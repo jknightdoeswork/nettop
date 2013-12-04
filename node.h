@@ -26,12 +26,14 @@
 #include <fcntl.h>
 #include <pthread.h>
 #include <limits.h>
+#include <math.h>
+#include "parser.h"
 
 /* DEFINES */
 
 #define DEBUGWINDOWS 0
 
-#define TIMEOUT 10
+#define TIMEOUT 8
 #define DROPPROB 0
 #define QUEUESIZE 20
 #define SLIDENSIZE 8
@@ -44,6 +46,7 @@
 /* GLOBALS */
 extern struct list *nodelist;
 extern int globalport;
+extern FILE *file;
 
 /* STRUCTURES */
 
@@ -94,6 +97,7 @@ struct routing_table_entry
     char through[BUFSIZE];
     int weight;
     int drop;
+    int delay;
     
     // eplanning
     struct routing_table_entry *next, *prev;
@@ -133,15 +137,15 @@ enum globalenums
 /* FUNCTIONS */
 
 /* for node.c */
-struct routing_table_entry *rtappend(struct node* nodea, char name[],
-				     char through[], int weight, int drop);
+struct routing_table_entry *rtappend(struct node *w, char name[],
+		char through[], int delay, int drop, int weight);
 struct node *append(struct list *l, char name[]);
 void printwindow(struct window *q);
 int enqueue(struct window *q, char* msg);
 int comesfirst(int first, int a, int b);
 struct packet *dequeue(struct window *q);
 struct node *addnode(char name[]);
-void addedge(char nodeaname[], char nodebname[], int weight, int drop);
+void addedge(char nodeaname[], char nodebname[], int delay, int drop);
 int reqack(struct window *q);
 void getaddr(struct node *w);
 int getportfromname(char name[]);
