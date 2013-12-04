@@ -523,6 +523,7 @@ int getsockfromname(char* name)
 void initialize()
 {
     nodelist = malloc(sizeof(struct list));
+    memset(nodelist, 0, sizeof(struct list));
     srand(time(NULL));
     
     return;
