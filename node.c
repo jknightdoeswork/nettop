@@ -11,6 +11,144 @@ struct list *nodelist;
 int globalport = 3490;
 FILE *file;
 
+/* frees a packet and the message in the packet */
+void freepacket(struct packet* p)
+{
+    free(p->msg);
+    free(p);
+    p = NULL;
+    
+    return;
+}
+
+/* frees an entire window (doing all the packets in it first) */
+void freewindow(struct window *w)
+{
+    if(w == NULL)
+        return;
+    
+    struct packet *p = w->head;
+    while(p != NULL)
+    {
+        /* clean the whole queue, just using dequeue and resetting p
+         to be the head since dequeue takes it off the head */
+        freepacket(dequeue(w));
+        p = w->head;
+    }
+    
+    free(w);
+    w = NULL;
+    
+    return;
+}
+
+/* frees a specific routing table entry, freeing all of it's windows
+ before freeing itself */
+void freeroutingtableentry(struct routing_table_entry *rte)
+{
+    if(rte == NULL)
+        return;
+    
+    /* free all of it's top level objects */
+    free(rte->name);
+    free(rte->through);
+    rte->next = NULL;
+    rte->prev = NULL;
+    
+    /* call other function to go deeper to free each window */
+    freewindow(rte->sendq);
+    freewindow(rte->recvq);
+    freewindow(rte->ackq);
+    
+    free(rte);
+    rte = NULL;
+    
+    return;
+}
+
+/* free an entire list of routing tables */
+void freeroutingtable(struct node *n)
+{
+    /* point our rte to the head of the routing table */
+    struct routing_table_entry *rte = n->routing_table;
+    struct routing_table_entry *temp;
+    
+    /* call this free on every routing table entry */
+    while(rte != NULL)
+    {
+        /* point temp to rte */
+        temp = rte;
+        /* move rte to point to the next one */
+        rte = rte->next;
+        /* then free the original one still held in temp */
+        freeroutingtableentry(temp);
+    }
+    
+    return;
+}
+
+/* free everything in a node, going deeper to free every sub-component */
+void freenode(struct node *n)
+{
+    if(n == NULL)
+        return;
+    
+    free(n->name);
+    
+    /* set to null ? better safe than sorry */
+    n->next = NULL;
+    n->addr = NULL;
+    n->prev = NULL;
+    
+    /* free the routing table which goes deeper on itself */
+    freeroutingtable(n);
+    
+    free(n);
+    n = NULL;
+    
+    return;
+}
+
+/* pass in a name, then free and delete that node */
+void deletenode(struct node *n)
+{
+    if(n == NULL)
+    {
+        fprintf(stderr, "Fatal error\n");
+        exit(1);
+    }
+    
+    /* remove the node from being in the list */
+    if(n->prev == NULL)
+    {
+        /* then n is the head */
+        nodelist->head = n->next;
+    }
+    else
+    {
+        /* n is not the head so remove itself from the linked
+         list in the forward direction */
+        n->prev->next = n->next;
+    }
+    
+    if(n->next == NULL)
+    {
+        /* then n is the tail */
+        nodelist->tail = n->prev;
+    }
+    else
+    {
+        /* n is not the tail so it removes itself from the linked
+         list in the reverse direction */
+        n->next->prev = n->prev;
+    }
+    
+    /* now it is gone from the list so free the node */
+    freenode(n);
+    
+    return;
+}
+
 /* add a node entry to our global list of nodes */
 struct node *addnode(char* name)
 {
@@ -110,11 +248,25 @@ struct routing_table_entry *rtappend(struct node *w, char* name,
 /* Adds an edge to node a and node b's routing tables of delay delay */
 void addedge(char* nodeaname, char* nodebname, int delay, int drop)
 {
+    /* calc weight and get both nodes */
     int weight = ((float)100/(float)(100-drop))*delay;
     struct node* nodea = getnodefromname(nodeaname);
-    rtappend(nodea, nodebname, nodebname, delay, drop, weight);
-    
     struct node* nodeb = getnodefromname(nodebname);
+    
+    /* if either don't exist, do not proceed */
+    if(nodea == NULL)
+    {
+        printf("[%s]Node does not exist\n", nodeaname);
+        return;
+    }
+    if(nodeb == NULL)
+    {
+        printf("[%s]Node does not exist\n", nodebname);
+        return;
+    }
+    
+    /* only proceed if both nodes exist */
+    rtappend(nodea, nodebname, nodebname, delay, drop, weight);
     rtappend(nodeb, nodeaname, nodeaname, delay, drop, weight);
 }
 
@@ -122,7 +274,6 @@ void addedge(char* nodeaname, char* nodebname, int delay, int drop)
 /* todo-remove it from handling RTE's */
 struct node *append(struct list *l, char* name)
 {
-    printf("Adding thread[%s]\n", name);
     /* fail if l is null */
     if(l == NULL)
     {
@@ -164,8 +315,6 @@ struct node *append(struct list *l, char* name)
     getaddr(w); /* port to make sense */
 
     spawnthread(w);
-    
-    printf("Added thread [%s]\n", w->name);
     
     return w;
 }
@@ -566,19 +715,26 @@ void sendudp(char *src, char *msg, char *dest)
     return;
 }
 
+/* given a source node, get it's routing table entry for the dest */
 struct routing_table_entry *getroutingtableentry(struct node *src, char *dest)
 {
     struct routing_table_entry *iter = src->routing_table;
+    
+    /* loop on everything in our routing table */
     while (iter != NULL)
     {
         if (strcmp(iter->name, dest) == 0)
             return iter;
 	
-	iter = iter->next;
+        iter = iter->next;
     }
     return NULL;
 }
 
+/* our ackq is anything we are blindly forwarding (acks, nacks,
+ and messages not meant for us). if it's delay is up, send it
+ and forget about it since i am not responsible for reliable
+ delivery (handled elsewhere) */
 void checkackdelays(struct node *n, struct routing_table_entry *rte)
 {
     if(rte == NULL)
@@ -586,10 +742,12 @@ void checkackdelays(struct node *n, struct routing_table_entry *rte)
 
 	time_t curtime = time(NULL);
 
+    /* get appropriate entries */
 	struct window *w = rte->ackq;
+    
     if(w == NULL)
     {
-        fprintf(stderr, "w is null??\n");
+        fprintf(stderr, "Window is null\n");
         exit(1);
     }
     
@@ -599,6 +757,7 @@ void checkackdelays(struct node *n, struct routing_table_entry *rte)
 	if(r == NULL)
 		return;
 
+    /* loop on all packets and send them if their delay is up */
 	while(p != NULL)
 	{
 		if(p->enqT < curtime - r->delay)
@@ -615,11 +774,8 @@ void checkackdelays(struct node *n, struct routing_table_entry *rte)
 	return;
 }
 
-void freepacket(struct packet* p)
-{
-    free(p->msg);
-    free(p);
-}
+/* check if messages need to be sent from delay, or have timed out.
+ either way it needs to be sent */
 void checkmsgdelays(struct node *n, struct routing_table_entry *rte)
 {
 	if(rte == NULL)
@@ -627,7 +783,15 @@ void checkmsgdelays(struct node *n, struct routing_table_entry *rte)
 
 	time_t curtime = time(NULL);
 
+    /* get appropriate entries */
 	struct window *w = rte->sendq;
+    
+    if(w == NULL)
+    {
+        fprintf(stderr, "Window is null\n");
+        exit(1);
+    }
+    
 	struct packet *p = w->head;
 	struct routing_table_entry *r = getroutingtableentry(n, rte->through);
 
@@ -702,12 +866,16 @@ void *threadloop(void *arg)
 		exit(1);
 	}
 	
+    /* main accept loop */
 	while(!me->dead)
 	{
 		laststep = dvr_step(me, laststep);
 		checktimeouts(me);
 		receivemsg(me->name);
 	}
+    
+    /* delete itself then exit */
+    deletenode(me);
 
 	pthread_exit(NULL);	
 	return NULL;
@@ -755,37 +923,52 @@ void sigkillall()
 	return;
 }
 
+/* prompt the user input to send a message between nodes */
 void usersendmessage()
 {
 	char src[BUFSIZE], dest[BUFSIZE], msg[BUFSIZE];
 	char send[BUFSIZE];
+    char *saveptr;
+    struct node *nsrc;
+    
+    /* prompt user for input */
 	printf("Enter the name of the source node: ");
 	fgets(src, BUFSIZE, stdin);
+    /* remove trailing newline */
+    strtok_r(src, "\n", &saveptr);
+    
+    if((nsrc = getnodefromname(src)) == NULL)
+    {
+        printf("[%s]Node does not exist\n", src);
+        return;
+    }
+    
 	printf("Enter the name of the destination node: ");
 	fgets(dest, BUFSIZE, stdin);
+    strtok_r(dest, "\n", &saveptr);
+    
+    if(getnodefromname(dest) == NULL)
+    {
+        printf("[%s]Node does not exist", dest);
+        return;
+    }
+    
+    /* see if there is an entry for this path, if there isn't, then
+     no connection exists so we can't send a message */
+    struct routing_table_entry *rte;
+    rte = getroutingtableentry(nsrc, dest);
+    
+    if(rte == NULL)
+    {
+        printf("[%s]-[%s]No path between nodes exists\n", src, dest);
+        return;
+    }
+    
 	printf("Enter the message to send: ");
 	fgets(msg, BUFSIZE, stdin);
     
     /* remove trailing newline from the input buffers */
-    strtok(src, "\n");
-    strtok(dest, "\n");
-    strtok(msg, "\n");
-
-	struct routing_table_entry *rte;
-	struct node *n = getnodefromname(src);
-
-	if(n == NULL)
-	{
-		printf("[%s]Node does not exist\n", src);
-		return;
-	}
-
-	rte = getroutingtableentry(n, dest);
-    if(rte == NULL)
-    {
-		printf("[%s]Node does not exist\n", src);
-		return;
-    }
+    strtok_r(msg, "\n", &saveptr);
 	
     /* ship off 3 versions */
 	sprintf(send, "%d`%s`%s`%s", reqack(rte->sendq), src, dest, msg);
@@ -796,25 +979,129 @@ void usersendmessage()
 	enqueue(rte->sendq, send);
 }
 
+/* prompt the user input to add a node to the topology */
 void useraddnode()
 {
     char name[BUFSIZE];
+    char *saveptr;
     printf("Enter the name of the node\n");
     fgets(name, BUFSIZE, stdin);
     
     /* parse off the newline */
-    strtok(name, "\n");
+    strtok_r(name, "\n", &saveptr);
     
     if(getnodefromname(name) != NULL)
     {
-        printf("Node with name [%s] already exists\n", name);
+        printf("[%s]Node already exists\n", name);
         return;
     }
     
     addnode(name);
+    
+    printf("[%s]Node added\n", name);
     return;
 }
 
+// TODO: WE NEED A WAY TO REMOVE NODES SAFELY
+/* prompt the users input to remove a node in the topology */
+void userremovenode()
+{
+    char name[BUFSIZE];
+    char *saveptr;
+    printf("Enter the name of the node to remove\n");
+    fgets(name, BUFSIZE, stdin);
+    
+    /* parse off the newline */
+    strtok_r(name, "\n", &saveptr);
+    
+    if(getnodefromname(name) == NULL)
+    {
+        printf("[%s]Node does not exist\n", name);
+        return;
+    }
+    
+    sigkillthread(name);
+    
+    printf("[%s]Node deleted\n", name);
+    
+    return;
+}
+
+//TODO : Decide to create the nodes if they don't exist, or only
+//accept edges on existing nodes
+/* prompt the users input to add an edge to the topology */
+void useraddedge()
+{
+    char name1[BUFSIZE], name2[BUFSIZE], other[BUFSIZE];
+    int delay, drop;
+    char *saveptr;
+    
+    struct node *nsrc;
+    
+    /* prompt for input */
+    printf("Enter the name of the first node on the edge\n");
+    fgets(name1, BUFSIZE, stdin);
+    /* token off the newline */
+    strtok_r(name1, "\n", &saveptr);
+    
+    if((nsrc = getnodefromname(name1)) == NULL)
+    {
+        printf("[%s]Node does not exist\n", name1);
+        return;
+    }
+    
+    printf("Enter the name of the second node on the edge\n");
+    fgets(name2, BUFSIZE, stdin);
+    strtok_r(name2, "\n", &saveptr);
+    
+    if(getnodefromname(name2) == NULL)
+    {
+        printf("[%s]Node does not exist\n", name2);
+        return;
+    }
+    
+    struct routing_table_entry *rte;
+    rte = getroutingtableentry(nsrc, name2);
+    
+    if(rte != NULL)
+    {
+        printf("[%s]-[%s]Edge already exists\n", name1, name2);
+        return;
+    }
+    
+    /* get delay */
+    printf("Enter the delay over the edge (integer in s)\n");
+    fgets(other, BUFSIZE, stdin);
+    delay = atoi(other);
+    
+    if(delay < 0)
+    {
+        printf("[%s]-[%s]Edge delay must be >= 0\n", name1, name2);
+        return;
+    }
+    
+    memset(other, 0, BUFSIZE);
+    
+    /* get drop prob */
+    printf("Enter the drop probability (integer from 0-100)\n");
+    fgets(other, BUFSIZE, stdin);
+    drop = atoi(other);
+    
+    if(drop<0 || drop>100)
+    {
+        printf("[%s]-[%s]Edge drop probability must be between 0-100\n",
+               name1, name2);
+        return;
+    }
+    
+    addedge(name1, name2, delay, drop);
+    printf("[%s]-[%s]Edge added : (-delay:%ds -drop:%d%%)\n",
+           name1, name2, delay, drop);
+    
+    return;
+}
+
+/* display the menu to the user */
 void displaymenu()
 {
 	printf("\n\n----------------------\n");
@@ -830,6 +1117,7 @@ void displaymenu()
 	return;
 }
 
+/* main accept loop for user input */
 void userloop()
 {
 	char c, ch;
@@ -845,6 +1133,7 @@ void userloop()
 		/* consume all the extra input */
 		while ((ch = getchar() != '\n') && (ch != EOF));
 		
+        /* consider all cases */
 		switch(c)
 		{
 			case '0':
@@ -857,10 +1146,10 @@ void userloop()
 				useraddnode();
 				break;
 			case '3':
-				//userremovenode();
+				userremovenode();
 				break;
 			case '4':
-				//useraddedge();
+				useraddedge();
 				break;
 			case '5':
 				//usermodedge();
@@ -886,16 +1175,6 @@ int main()
     parse_file("test.top");
     
     printf("Letting nodes build their routing tables...\n");
-    usleep(25000000);
-    
-    addnode("i");
-    usleep(2000000);
-    
-    addnode("j");
-    usleep(2000000);
-    addnode("o");
-    usleep(2000000);
-    addnode("p");
     
     userloop();
     
