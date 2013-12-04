@@ -2,7 +2,6 @@
 //  swind.c
 //  
 
-#include "dvr.h"
 #include "node.h"
 
 /* increment the sliding window range for a given window */

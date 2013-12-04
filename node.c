@@ -634,6 +634,7 @@ void *threadloop(void *arg)
 	char *name = (char *)arg;
 	
 	struct node *me = getnodefromname(name);
+    time_t laststep = -1;
 	
 	if(me == NULL)
 	{
@@ -643,10 +644,12 @@ void *threadloop(void *arg)
 	
 	while(!me->dead)
 	{
+        laststep = dvr_step(me, laststep);
 		checktimeouts(me);
 		receivemsg(me->name);
 	}
-	
+
+    pthread_exit(NULL);	
 	return NULL;
 }
 
