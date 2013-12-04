@@ -50,6 +50,7 @@ extern int globalport;
 /* used for holding tokenized messages */
 struct msgtok
 {
+    char *orig;
     char *ack, *src, *dest, *pay;
     int acknum;
     int type;
@@ -160,15 +161,15 @@ struct routing_table_entry *getroutingtableentry(struct node *src, char *dest);
 /* for swind.c */
 int plusone(int i);
 int receivemsg(char *name);
-int iamdest(char *name, char *msg);
+int iamdest(char *name, struct msgtok *tok);
 int msginorder(struct window *q, int ack);
-void sendnacks(struct window *q, char *msg);
-void sendbacknack(char *msg, int out);
-void sendbackack(char *msg);
+void sendnacks(struct window *q, struct msgtok *tok);
+void sendbacknack(struct msgtok *tok, int out);
+void sendbackack(struct msgtok *tok);
 
-void handleack(char *name, char *msg);
-void handlenack(char *name, char *msg);
-void handlemsg(char *name, char *msg);
+void handleack(char *name, struct msgtok *);
+void handlenack(char *name, struct msgtok *);
+void handlemsg(char *name, struct msgtok *);
 int ihavemsg(struct window *q, int ack);
 struct msgtok *tokenmsg(char *msg);
 int interpret(char *msg);
