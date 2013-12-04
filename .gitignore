@@ -20,5 +20,5 @@
 *.swp
 node
 parser
-
+*~
 .*
