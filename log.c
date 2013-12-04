@@ -3,18 +3,25 @@
 #include <sys/dir.h>
 #include <stdlib.h>
 #include <stdio.h>
+#include <string.h>
 #include <strings.h>
 #include <time.h>
+#include <errno.h>
 
-#define MAXFOLDERSIZE 32
+#define MAXFOLDERSIZE 64
 char folderpath[MAXFOLDERSIZE];
 void createlogdir()
 {
+    int error;
     bzero(folderpath, MAXFOLDERSIZE);
-    time_t curtime = time(NULL);
+    time_t curtime;
+    time(&curtime);
     strftime(folderpath, MAXFOLDERSIZE, "logs/%d-%m-%Y-%T", localtime(&curtime));
     fprintf(stderr, "about to create folder at path: %s\n", folderpath);
-    mkdir(folderpath, S_IRWXU);
+    if ((error = mkdir(folderpath, S_IREAD | S_IEXEC | S_IWRITE)) != 0)
+    {
+        fprintf(stderr, "error creating directory: %s", strerror(error));
+    }
     fprintf(stderr, "done\n");
 }
 
@@ -29,7 +36,14 @@ FILE* createlogfile(char* nodename)
     FILE* to_return = NULL;
 
     to_return = fopen(namepath, "w");
-
+    
     return to_return;
 }
 
+/*int main() {
+    createlogdir();
+    FILE* lf = createlogfile("testnodename");
+    fprintf(lf, "testing!\n");
+    fclose(lf);
+    return 0;
+}*/

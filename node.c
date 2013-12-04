@@ -513,7 +513,7 @@ int getsockfromname(char name[])
 /* initialize some basic features of the program */
 void initialize()
 {
-    createlogdir();
+    //createlogdir();
     nodelist = malloc(sizeof(struct list));
     if (nodelist == NULL) {
         fprintf(stderr, "OUT OF MEMORY\n");
@@ -754,6 +754,7 @@ int main()
 {
 	/* initialize and create the nodes */
     initialize();
+    createlogdir();
     fprintf(stderr, "adding nodes 1\n");
     addnode("NodeA");
     fprintf(stderr, "adding nodes 2\n");
