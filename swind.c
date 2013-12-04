@@ -300,7 +300,7 @@ void sendbackack(char *msg)
     struct msgtok *tok = tokenmsg(msg);
     
     /* reverse dest and src because we are sending back to them */
-    sprintf(ackmsg, "%d`%s`%s`+", tok->acknum, tok->dest, tok->src);
+    sprintf(ackmsg, "+%d`%s`%s`", tok->acknum, tok->dest, tok->src);
     
     struct routing_table_entry *rte;
     rte = getroutingtableentry(getnodefromname(tok->dest), tok->src);
@@ -327,7 +327,7 @@ void sendbacknack(char *msg, int out)
     struct msgtok *tok = tokenmsg(msg);
     
     /* reverse dest and src */
-    sprintf(nackmsg, "%d`%s`%s`-", out, tok->dest, tok->src);
+    sprintf(nackmsg, "-%d`%s`%s`", out, tok->dest, tok->src);
     
     struct routing_table_entry *rte;
     rte = getroutingtableentry(getnodefromname(tok->dest), tok->src);
