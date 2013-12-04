@@ -39,6 +39,7 @@
 #define TIMEOUTVAL 1
 #define LOCALHOST "127.0.0.1"
 #define DELIM "`"
+#define CONTROLCHARS "&+-"
 
 /* GLOBALS */
 extern struct list *nodelist;
@@ -51,6 +52,7 @@ struct msgtok
 {
     char *ack, *src, *dest, *pay;
     int acknum;
+    int type;
 };
 
 /* in this proxy enqT is for timeouts, acknum is the ack it is */
@@ -120,9 +122,10 @@ struct list
 /* enum for the type of queue we are looking at */
 enum globalenums
 {
-    enumnack = -1,
-    enumpureack = 0,
-    enumrealmsg = 1,
+    enumnack = 1,
+    enumpureack = 2,
+    enumrealmsg = 3,
+    enumdvrmsg = 4,
 };
 
 /* FUNCTIONS */
