@@ -39,7 +39,7 @@ struct routing_table_entry *rtappend(struct node *w, char name[], char through[]
 
     new->sendq = malloc(sizeof(struct window));
     new->recvq = malloc(sizeof(struct window));
-    new->delayq = malloc(sizeof(struct window));
+    new->ackq = malloc(sizeof(struct window));
     
     /* initialize the queues */
     new->sendq->head = NULL;
@@ -58,13 +58,13 @@ struct routing_table_entry *rtappend(struct node *w, char name[], char through[]
     new->recvq->last = SLIDENSIZE-1;
     new->recvq->cur = 0;
     
-    new->delayq->head = NULL;
-    new->delayq->tail = NULL;
-    new->delayq->sz = 0;
-    new->delayq->max = INT_MAX;
-    new->delayq->first = 0;
-    new->delayq->last = INT_MAX;
-    new->delayq->cur = 0;
+    new->ackq->head = NULL;
+    new->ackq->tail = NULL;
+    new->ackq->sz = 0;
+    new->ackq->max = INT_MAX;
+    new->ackq->first = 0;
+    new->ackq->last = INT_MAX;
+    new->ackq->cur = 0;
     
     /* do the linked list insertion */
     new->next = NULL;
@@ -573,76 +573,76 @@ struct routing_table_entry *get_routing_table_entry(char *src, char *dest)
  * or if they should be sent based off of the ack timing out (no confirmation) */
 void checktimeouts(struct node *n)
 {
-    int doacks = 0;
+	int doacks = 0;
 	struct routing_table_entry *rte = n->qlist;
+	struct packet *p;
+	struct packet *tmp;
     
-    time_t curtime = time(NULL);
+	time_t curtime = time(NULL);
 	
 	/* check all RTEs for outstanding packets, either delay, or timeout */
 	while(rte != NULL)
 	{
-		struct packet *p = rte->sendq->head;
+		if(doacks)
+			p = rte->ackq->head;
+		else
+			p = rte->sendq->head;
 		
 		/* check all packets to see if outstanding, ensure
-         we enter this once to check the ackq */
-		while(p != NULL || !doacks)
+		we enter this once to check the ackq */
+		while(p != NULL)
 		{
-            /* once p is null, we've checked all packets, so
-             switch to start doing acks */
-            if(p == NULL && !doacks)
-            {
-                doacks = 1;
-                p = rte->delayq->head;
-                
-                /* if there were no packets in the delayq, just
-                 immediately break */
-                if(p == NULL)
-                    break;
-            }
-            
-			/* check if the time is up, and if it hasn't already
-			 * been confirmed received, and if this is the first
-			 time sending it, ie send based on delay */
-			if(p->enqT < curtime - rte->weight &&
-				!(p->received) && !(p->sent))
+			if(!doacks)
 			{
-				/* re-send because timeout */
-				printf("DELAY EXPIRED\n");
-				/* mark the packet as having been sent */
-				p->sent = 1;
-				/* send it */
-				sendudp(n->name, p->msg, rte->name);
-				/* reset the timer */
-				p->enqT = curtime;
-                
-                /* if we are just checking delays, once we've sent
-                 it, since no reliable transfer, just remove it
-                 from our queue */
-                if(doacks)
-                {
-                    struct packet *t = p;
-                    p = p->next;
-                    /* free and dequeue the packet since we no
-                     longer need it */
-                    free(dequeue_el(rte->delayq, t));
-                }
+				/* check if the time is up, and if it hasn't already
+				* been confirmed received, and if this is the first
+				time sending it, ie send based on delay */
+				if(p->enqT < curtime - rte->weight &&
+					!(p->received) && !(p->sent))
+				{
+					/* re-send because timeout */
+					printf("DELAY EXPIRED\n");
+					/* mark the packet as having been sent */
+					p->sent = 1;
+					/* send it */
+					sendudp(n->name, p->msg, rte->name);
+					/* reset the timer */
+					p->enqT = curtime;
+				}
+				/* if it has been sent, then check the timeout on it
+					* and resend if timeout expires */
+				else if(p->sent && p->enqT < curtime - TIMEOUT)
+				{
+					printf("TIMEOUT OCCURRED\n");
+					p->sent = 0;
+					p->enqT = curtime;
+				}
 			}
-			/* if it has been sent, then check the timeout on it
-			 * and resend if timeout expires */
-			else if(p->sent && p->enqT < curtime - TIMEOUT)
+			else
 			{
-				printf("TIMEOUT OCCURRED\n");
-				p->sent = 0;
-				p->enqT = curtime;
+				if(p->enqT < curtime - rte->weight)
+				{
+					sendudp(n->name, p->msg, rte->name);
+					tmp = p;
+					p = p->next;
+					free(dequeue_el(rte->ackq, tmp));
+				}
 			}
-            
-            /* if we are only checking delays, then it is handled
-             when we dequeue and free the packet so don't do anything
-             if we aren't doing packets we need to move */
-            if(!doacks)
-                p = p->next;
+			
+			if(p != NULL)
+				p = p->next;
 		}
-		rte = rte->next;
+		
+		if(!doacks)
+		{
+			doacks = 1;
+		}
+		else
+		{
+			doacks = 0;
+		
+			rte = rte->next;
+		}
 	}
 	
 	return;
@@ -665,6 +665,8 @@ void *threadloop(void *arg)
 	{
 		checktimeouts(me);
 		receivemsg(me->name);
+		
+		usleep(1000000);
 	}
 	
 	return NULL;
@@ -757,7 +759,7 @@ int main()
     addnode("NodeB");
     addnode("NodeC");
     
-    addedge("NodeA", "NodeB", 3);
+    addedge("NodeA", "NodeB", 2);
     
     printf("Control in main!\n");
     

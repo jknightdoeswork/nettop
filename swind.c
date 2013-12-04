@@ -156,10 +156,7 @@ void clearwindow(struct routing_table_entry *ql, int type)
             el = q->head;
         }
         else
-        {
-            printf("Nothing in order; nothing to clear\n-----------\n");
             break;
-        }
     }
     
     return;
@@ -299,9 +296,16 @@ void sendbackack(char *msg)
     struct routing_table_entry *rte;
     rte = get_routing_table_entry(tok->dest, tok->src);
     
+    if(rte == NULL)
+    {
+	    freetok(tok);
+	    return;
+    }
+    
     /* enqueue it to my delay queue so it waits
      the appropriate length of time before being sent */
-    enqueue(rte->delayq, ackmsg);
+    enqueue(rte->ackq, ackmsg);
+    //sendudp(tok->dest, ackmsg, tok->src);
     
     freetok(tok);
     return;
@@ -319,9 +323,16 @@ void sendbacknack(char *msg, int out)
     struct routing_table_entry *rte;
     rte = get_routing_table_entry(tok->dest, tok->src);
     
+    if(rte == NULL)
+    {
+	    freetok(tok);
+	    return;
+    }
+    
     /* enqueue it to my delay queue so it waits
      the appropriate length of time before being sent */
-    enqueue(rte->delayq, nackmsg);
+    enqueue(rte->ackq, nackmsg);
+    //sendudp(tok->dest, nackmsg, tok->src);
     
     freetok(tok);
     return;

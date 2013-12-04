@@ -85,7 +85,7 @@ struct window
 struct routing_table_entry
 {
     struct window *sendq, *recvq;
-    struct window *delayq;
+    struct window *ackq;
     char name[BUFSIZE];
     //planning
     char through[BUFSIZE];

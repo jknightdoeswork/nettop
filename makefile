@@ -1,7 +1,7 @@
 #COMPILER
 CC=gcc
 #FLAGS
-CFLAGS=-Wall -Wextra
+CFLAGS=-Wall -Wextra -lpthread
 
 all: node
 
