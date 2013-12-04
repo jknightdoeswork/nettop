@@ -89,7 +89,7 @@ struct routing_table_entry *rtappend(struct node *w, char* name,
         {
             if(strcmp(tmp->name, name) == 0)
             {
-                printf("RTE already exists for node: %s\n", name);
+                fprintf(stderr, "RTE already exists for node: %s\n", name);
                 return NULL;
             }
             
