@@ -20,6 +20,7 @@ time_t dvr_step(struct node* a, time_t laststep)
     
     // send my datas to all neighbours
     struct routing_table_entry *rte = a->routing_table;
+    
     while (rte != NULL)
     {
         if (is_neighbour(rte))
@@ -43,7 +44,7 @@ void send_dvr_message(struct node* src, char* dest)
         {
             bzero(message, BUFSIZE);
             sprintf(message, msgformat, src->name, rte->name, rte->weight);
-            sendudp(src->name, dest, message);
+            sendudp(src->name, message, dest);
         }
         rte = rte->next;
     }
@@ -75,11 +76,11 @@ void handledvrmessage(struct node* nodea, struct msgtok* msg)
     if (acrte == NULL)
     {
         // no existing entry
-        rtappend(nodea, nodecname, nodebname, abcweight);
+        rtappend(nodea, nodecname, nodebname, abcweight, 0);
     }
     else if (acrte->weight > abcweight) 
     {
-        rtappend(nodea, nodecname, nodebname, abcweight);
+        rtappend(nodea, nodecname, nodebname, abcweight, 0);
     }
 }
 

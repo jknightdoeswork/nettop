@@ -29,7 +29,7 @@
 
 /* DEFINES */
 
-#define DEBUGWINDOWS 1
+#define DEBUGWINDOWS 0
 
 #define TIMEOUT 10
 #define DROPPROB 0
@@ -93,6 +93,7 @@ struct routing_table_entry
     //planning
     char through[BUFSIZE];
     int weight;
+    int drop;
     
     // eplanning
     struct routing_table_entry *next, *prev;
@@ -132,14 +133,15 @@ enum globalenums
 /* FUNCTIONS */
 
 /* for node.c */
-struct routing_table_entry *rtappend(struct node* nodea, char name[], char through[], int weight);
+struct routing_table_entry *rtappend(struct node* nodea, char name[],
+				     char through[], int weight, int drop);
 struct node *append(struct list *l, char name[]);
 void printwindow(struct window *q);
 int enqueue(struct window *q, char* msg);
 int comesfirst(int first, int a, int b);
 struct packet *dequeue(struct window *q);
 struct node *addnode(char name[]);
-void addedge(char nodeaname[], char nodebname[], int weight);
+void addedge(char nodeaname[], char nodebname[], int weight, int drop);
 int reqack(struct window *q);
 void getaddr(struct node *w);
 int getportfromname(char name[]);

@@ -24,7 +24,8 @@ struct node *addnode(char name[])
 
 /* given a node, and a name for our destination entry, add
  an RTE for the destination so our node knows about it */
-struct routing_table_entry *rtappend(struct node *w, char name[], char through[], int weight)
+struct routing_table_entry *rtappend(struct node *w, char name[],
+				     char through[], int weight, int drop)
 {
     struct routing_table_entry *tmp;
     struct routing_table_entry *new;
@@ -34,6 +35,7 @@ struct routing_table_entry *rtappend(struct node *w, char name[], char through[]
     /* construct the rt entry */    
     new = malloc(sizeof(struct routing_table_entry));
     new->weight = weight;
+    new->drop = drop;
     strcpy(new->name, name);
     strcpy(new->through, through);
 
@@ -99,13 +101,13 @@ struct routing_table_entry *rtappend(struct node *w, char name[], char through[]
 }
 
 /* Adds an edge to node a and node b's routing tables of weight weight */
-void addedge(char* nodeaname, char* nodebname, int weight)
+void addedge(char* nodeaname, char* nodebname, int weight, int drop)
 {
     struct node* nodea = getnodefromname(nodeaname);
-    rtappend(nodea, nodebname, nodebname, weight);
+    rtappend(nodea, nodebname, nodebname, weight, drop);
     
     struct node* nodeb = getnodefromname(nodebname);
-    rtappend(nodeb, nodeaname, nodeaname, weight);
+    rtappend(nodeb, nodeaname, nodeaname, weight, drop);
 }
 
 /* given our (global) list of nodes, append a new node */
@@ -515,10 +517,13 @@ void sendudp(char *src, char *msg, char *dest)
     
     /* get the entry for what node it goes through and
      send to intermediate node */
-    struct routing_table_entry *rte;
+    struct routing_table_entry *rte, *r;
     rte = getroutingtableentry(getnodefromname(src), dest);
     
-    if(rte == NULL)
+    /* get the node we go through */
+    r = getroutingtableentry(getnodefromname(src), rte->through);
+    
+    if(rte == NULL || r == NULL)
     {
         fprintf(stderr, "Error, no connection to [%s] found!\n", dest);
         return;
@@ -528,7 +533,7 @@ void sendudp(char *src, char *msg, char *dest)
     
     /* run probability to drop packet */
     int rng = rand() % 100;
-    if(rng >= DROPPROB)
+    if(rng >= r->drop)
     {
         /* send the packet, if it was less then it was dropped */
         sendto(sock, msg, strlen(msg), 0, to,
@@ -545,6 +550,8 @@ struct routing_table_entry *getroutingtableentry(struct node *src, char *dest)
     {
         if (strcmp(iter->name, dest) == 0)
             return iter;
+	
+	iter = iter->next;
     }
     return NULL;
 }
@@ -555,6 +562,7 @@ void checktimeouts(struct node *n)
 {
 	int doacks = 0;
 	struct routing_table_entry *rte = n->routing_table;
+	struct routing_table_entry *r;
 	struct packet *p;
 	struct packet *tmp;
     
@@ -572,12 +580,16 @@ void checktimeouts(struct node *n)
 		we enter this once to check the ackq */
 		while(p != NULL)
 		{
+			/* get the rte from us to who we are going
+			 * through to send to true dest */
+			r = getroutingtableentry(n, rte->through);
+				
 			if(!doacks)
 			{
 				/* check if the time is up, and if it hasn't already
 				* been confirmed received, and if this is the first
 				time sending it, ie send based on delay */
-				if(p->enqT < curtime - rte->weight &&
+				if(p->enqT < curtime - r->weight &&
 					!(p->received) && !(p->sent))
 				{
 					/* re-send because timeout */
@@ -600,7 +612,7 @@ void checktimeouts(struct node *n)
 			}
 			else
 			{
-				if(p->enqT < curtime - rte->weight)
+				if(p->enqT < curtime - r->weight)
 				{
 					sendudp(n->name, p->msg, rte->name);
 					tmp = p;
@@ -634,7 +646,7 @@ void *threadloop(void *arg)
 	char *name = (char *)arg;
 	
 	struct node *me = getnodefromname(name);
-    time_t laststep = -1;
+	time_t laststep = -1;
 	
 	if(me == NULL)
 	{
@@ -644,12 +656,12 @@ void *threadloop(void *arg)
 	
 	while(!me->dead)
 	{
-        laststep = dvr_step(me, laststep);
+		laststep = dvr_step(me, laststep);
 		checktimeouts(me);
 		receivemsg(me->name);
-		
-		usleep(1000000);
 	}
+	
+	printlist(nodelist);
 
     pthread_exit(NULL);	
 	return NULL;
@@ -724,10 +736,15 @@ void userloop()
 {
 	char c;
 	
+	printf("-------------INUSERLOOP------------\n");
+	
 	while(c != '0')
 	{
 		c = getchar();
 		getchar();
+		
+		if(c == '1')
+			sigkillthread("NodeB");
 	}
 	
 	return;
@@ -742,18 +759,23 @@ int main()
     addnode("NodeB");
     addnode("NodeC");
     
-    addedge("NodeA", "NodeB", 2);
+    addedge("NodeA", "NodeB", 2, 0);
+    addedge("NodeB", "NodeC", 1, 0);
     
     printf("Control in main!\n");
     
     char message0[BUFSIZE], message1[BUFSIZE];
     
+    usleep(6000000);
+    
+    printlist(nodelist);
+    
     /* LETS SEND ON B TO A */
-    struct routing_table_entry *ql = getroutingtableentry(getnodefromname("NodeA"), "NodeB");
+    struct routing_table_entry *ql = getroutingtableentry(getnodefromname("NodeA"), "NodeC");
     struct window *q = ql->sendq;
     
-    sprintf(message0, "%d`NodeA`NodeB`Message0\n", reqack(q));
-    sprintf(message1, "%d`NodeA`NodeB`Message1\n", reqack(q));
+    sprintf(message0, "%d`NodeA`NodeC`Message0\n", reqack(q));
+    sprintf(message1, "%d`NodeA`NodeC`Message1\n", reqack(q));
     
     /* enqueue it and send it */
     enqueue(q, message1);
