@@ -54,10 +54,13 @@ int receivemsg(char *name)
     struct sockaddr_storage their;
     socklen_t addr_size;
     
+    //fprintf(file, "[%s]", name);
     int sock = getsockfromname(name);
-    
+    //fprintf(file, "got sock [%d], doing recv\n", sock);
     int bytes = recvfrom(sock, recvbuf, BUFSIZE-1, 0,
                          (struct sockaddr*)&their, &addr_size);
+    
+    //int bytes = 0;
     
     /* since we are using non-blocking recvfrom dont proceed
      if we didn't actually receive anything */
@@ -124,32 +127,19 @@ void clearwindow(struct routing_table_entry *ql, int type)
             /* if it was just an ack then just advance the window
              and remove it from our buffer */
             if(type == enumpureack)
-                free(dequeue(q));
+                freepacket(dequeue(q));
             else
             {
-                /* a true message so we need to handle it */
+                /* we are dequeueing messages in our recv
+                 buffer - ie that we were storing out of
+                 order */
                 struct packet *el = dequeue(q);
                 
-                struct msgtok *tok = tokenmsg(el->msg);
-                struct routing_table_entry *ql = getroutingtableentry(getnodefromname(tok->dest), tok->src);
-		
-		if(ql == NULL)
-			return;
-                
-                char returnmsg[BUFSIZE];
-                
-                sprintf(returnmsg, "%d`%s`%s`Message %d received!\n",
-                        reqack(ql->sendq), tok->dest, tok->src, tok->acknum);
-                
-		//temp do not send message back
-                /* enqueue it in our sendq to the destination */
-                //enqueue(ql->sendq, returnmsg);
-                
-                //sendudp(tok->dest, returnmsg, tok->src);
+                printf("Msg [%s] is now next in order and being ", el->msg);
+                printf("dequeued from my receive buffer\n");
                 
                 /* free the memory we were using */
-                freetok(tok);
-                free(el);
+                freepacket(el);
             }
             
             
@@ -515,8 +505,8 @@ void handlemsg(char *name, struct msgtok *tok)
         return;
     }
     
-    printf("Received a message:\n[#%d][%s]-[%s]\n%s-----------\n",
-           tok->acknum, tok->src, tok->dest, tok->pay);
+    printf("[%s]Received a message:\n[#%d][%s]-[%s]\n%s-----------\n",
+           name, tok->acknum, tok->src, tok->dest, tok->pay);
     
     /* if we get here then I was the intended recipient so handle
      it properly */
@@ -555,7 +545,7 @@ void handlemsg(char *name, struct msgtok *tok)
             sendnacks(q, tok);
         
         /* and clear the queue */
-        clearwindow(ql, enumrealmsg);
+	clearwindow(ql, enumrealmsg);
     }
     
     return;

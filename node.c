@@ -1,14 +1,18 @@
 //
 //  node.c
 //  
+// TODO : FIX A BETTER UI BUT SELECTIVE REPEAT SEEMS ALRIGHT
+// NO REAL WAY TO TEST GIVEN WITH THE CURR UI YOU CAN'T
+// REALLY SEND MULTIPLE MESSAGES
 
 #include "node.h"
 
 struct list *nodelist;
 int globalport = 3490;
+FILE *file;
 
 /* add a node entry to our global list of nodes */
-struct node *addnode(char name[])
+struct node *addnode(char* name)
 {
     /* add it to the set of all nodes */
     /* add it to every existing nodes list of queues */
@@ -18,15 +22,13 @@ struct node *addnode(char name[])
     struct node *n = append(nodelist, name);
     fprintf(stderr, "spawning thread\n");
     
-    spawnthread(n);
-    
     return n;
 }
 
 /* given a node, and a name for our destination entry, add
  an RTE for the destination so our node knows about it */
-struct routing_table_entry *rtappend(struct node *w, char name[],
-				     char through[], int weight, int drop)
+struct routing_table_entry *rtappend(struct node *w, char* name,
+		char* through, int delay, int drop, int weight)
 {
     struct routing_table_entry *tmp;
     struct routing_table_entry *new;
@@ -35,8 +37,13 @@ struct routing_table_entry *rtappend(struct node *w, char name[],
     
     /* construct the rt entry */    
     new = malloc(sizeof(struct routing_table_entry));
-    new->weight = weight;
+    new->name = malloc(BUFSIZE * sizeof(char));
+    memset(new->name, 0, BUFSIZE);
+    new->through = malloc(BUFSIZE * sizeof(char));
+    memset(new->through, 0, BUFSIZE);
+    new->delay = delay;
     new->drop = drop;
+    new->weight = weight;
     strcpy(new->name, name);
     strcpy(new->through, through);
 
@@ -83,7 +90,7 @@ struct routing_table_entry *rtappend(struct node *w, char name[],
         {
             if(strcmp(tmp->name, name) == 0)
             {
-                printf("RTE already exists for node: %s\n", name);
+                fprintf(stderr, "RTE already exists for node: %s\n", name);
                 return NULL;
             }
             
@@ -101,20 +108,22 @@ struct routing_table_entry *rtappend(struct node *w, char name[],
     return new;
 }
 
-/* Adds an edge to node a and node b's routing tables of weight weight */
-void addedge(char* nodeaname, char* nodebname, int weight, int drop)
+/* Adds an edge to node a and node b's routing tables of delay delay */
+void addedge(char* nodeaname, char* nodebname, int delay, int drop)
 {
+    int weight = (100.0/(100.0-drop))*delay;
     struct node* nodea = getnodefromname(nodeaname);
-    rtappend(nodea, nodebname, nodebname, weight, drop);
+    rtappend(nodea, nodebname, nodebname, delay, drop, weight);
     
     struct node* nodeb = getnodefromname(nodebname);
-    rtappend(nodeb, nodeaname, nodeaname, weight, drop);
+    rtappend(nodeb, nodeaname, nodeaname, delay, drop, weight);
 }
 
 /* given our (global) list of nodes, append a new node */
 /* todo-remove it from handling RTE's */
-struct node *append(struct list *l, char name[])
+struct node *append(struct list *l, char* name)
 {
+    printf("Adding thread[%s]\n", name);
     /* fail if l is null */
     if(l == NULL)
     {
@@ -134,6 +143,8 @@ struct node *append(struct list *l, char name[])
         fprintf(stderr, "OUT OF MEMORY\n");
         exit(1);
     }
+    w->name = malloc(BUFSIZE * sizeof(char));
+    memset(w->name, 0, BUFSIZE);
     strcpy(w->name, name);
     w->port = globalport++;
     w->next = NULL;
@@ -151,11 +162,16 @@ struct node *append(struct list *l, char name[])
     }
     w->socket = setupmyport(name);
     getaddr(w); /* port to make sense */
+
+    spawnthread(w);
+    
+    printf("Added thread [%s]\n", w->name);
+    
     return w;
 }
 
 /* given a node name, get it's corresponding port */
-int getportfromname(char name[])
+int getportfromname(char* name)
 {
     struct node *w = getnodefromname(name);
     if (w == NULL)
@@ -210,7 +226,7 @@ void printlist(struct list *l)
         
         while(ql != NULL)
         {
-            printf("- RTE [%s]\n", ql->name);
+            printf("- RTE [%s] W:%d THROUGH:[%s]\n", ql->name, ql->weight, ql->through);
             if(DEBUGWINDOWS)
             {
                 printf("--------------------\nSendq sz [%d - %d]:\n",
@@ -266,6 +282,8 @@ int enqueue(struct window *q, char* msg)
 	if(e == NULL)
 		return -1;
     
+    e->msg = malloc(BUFSIZE * sizeof(char));
+    memset(e->msg, 0, BUFSIZE);
 	strcpy(e->msg, msg);
     
     struct msgtok *tok = tokenmsg(msg);
@@ -373,7 +391,7 @@ struct packet *dequeue_el(struct window *q, struct packet *el)
     
     if(temp == NULL)
     {
-        printf("Error finding element to dequeue!\n");
+        fprintf(stderr, "Error finding element to dequeue!\n");
         exit(1);
     }
     
@@ -429,9 +447,10 @@ void getaddr(struct node *w)
 }
 
 /* create the socket for a node to send from */
-int setupmyport(char name[])
+int setupmyport(char* name)
 {
     char portchar[8];
+    memset(portchar, 0, 8);
     int sock;
     struct addrinfo hints, *info;
     
@@ -466,7 +485,7 @@ int setupmyport(char name[])
 }
 
 /* get the node given it's name */
-struct node *getnodefromname(char name[])
+struct node *getnodefromname(char* name)
 {
     struct node *w = nodelist->head;
     while(w != NULL)
@@ -482,7 +501,7 @@ struct node *getnodefromname(char name[])
 }
 
 /* get the address to send to for a node from it's name */
-struct sockaddr *getaddrfromname(char name[])
+struct sockaddr *getaddrfromname(char* name)
 {
     struct node* w = getnodefromname(name);
     if (w == NULL)
@@ -491,7 +510,7 @@ struct sockaddr *getaddrfromname(char name[])
 }
 
 /* get the socket from the name */
-int getsockfromname(char name[])
+int getsockfromname(char* name)
 {
     struct node* w = getnodefromname(name);
     if (w == NULL)
@@ -507,7 +526,7 @@ void initialize()
     if (nodelist == NULL) {
         fprintf(stderr, "OUT OF MEMORY\n");
     }
-    bzero(nodelist, sizeof(struct list));
+    memset(nodelist, 0, sizeof(struct list));
     srand(time(NULL));
     
     return;
@@ -542,6 +561,11 @@ void sendudp(char *src, char *msg, char *dest)
         sendto(sock, msg, strlen(msg), 0, to,
                sizeof(struct sockaddr_storage));
     }
+    else
+    {
+	    if(msg[0] != '&')
+		printf("Dropping message [%s]\n", msg);
+    }
     
     return;
 }
@@ -559,85 +583,110 @@ struct routing_table_entry *getroutingtableentry(struct node *src, char *dest)
     return NULL;
 }
 
+void checkackdelays(struct node *n, struct routing_table_entry *rte)
+{
+    if(rte == NULL)
+		return;
+
+	time_t curtime = time(NULL);
+
+	struct window *w = rte->ackq;
+    if(w == NULL)
+    {
+        fprintf(stderr, "w is null??\n");
+        exit(1);
+    }
+    
+	struct packet *p = w->head;
+	struct routing_table_entry *r = getroutingtableentry(n, rte->through);
+
+	if(r == NULL)
+		return;
+
+	while(p != NULL)
+	{
+		if(p->enqT < curtime - r->delay)
+		{
+			sendudp(n->name, p->msg, r->name);
+			struct packet *t = p;
+			p = p->next;
+			freepacket(dequeue_el(w, t));
+		}
+		else
+			p = p->next;
+	}
+	
+	return;
+}
+
+void freepacket(struct packet* p)
+{
+    free(p->msg);
+    free(p);
+}
+void checkmsgdelays(struct node *n, struct routing_table_entry *rte)
+{
+	if(rte == NULL)
+		return;
+
+	time_t curtime = time(NULL);
+
+	struct window *w = rte->sendq;
+	struct packet *p = w->head;
+	struct routing_table_entry *r = getroutingtableentry(n, rte->through);
+
+	if(r == NULL)
+		return;
+
+	while(p != NULL)
+	{
+		if(p->sent)
+		{
+			/* check timeouts */
+			if(p->enqT < curtime - TIMEOUT)
+			{
+				/* only mark it as having been enqueued just now
+				 * and say it hasn't been sent before so it knows
+				 * to check for it's delay */
+				printf("[%s]Packet timed out\n\n", p->msg);
+
+				p->enqT = curtime;
+				p->sent = 0;
+			}
+		}
+		else
+		{	/* check delays */
+			if(p->enqT < curtime - r->delay && !p->received)
+			{
+				/* send the packet because it's delay is up */
+				printf("[%s]Packet sent\n\n", p->msg);
+
+				p->enqT = curtime;
+				p->sent = 1;
+
+				sendudp(n->name, p->msg, r->name);
+			}
+		}
+
+		p = p->next;
+	}
+	
+	return;
+}
+
 /* check all of my packets for if they should be sent based off of their delay
  * or if they should be sent based off of the ack timing out (no confirmation) */
 void checktimeouts(struct node *n)
 {
-	int doacks = 0;
 	struct routing_table_entry *rte = n->routing_table;
-	struct routing_table_entry *r;
-	struct packet *p;
-	struct packet *tmp;
-    
-	time_t curtime = time(NULL);
 	
 	/* check all RTEs for outstanding packets, either delay, or timeout */
 	while(rte != NULL)
 	{
-		if(doacks)
-			p = rte->ackq->head;
-		else
-			p = rte->sendq->head;
-		
-		/* check all packets to see if outstanding, ensure
-		we enter this once to check the ackq */
-		while(p != NULL)
-		{
-			/* get the rte from us to who we are going
-			 * through to send to true dest */
-			r = getroutingtableentry(n, rte->through);
-				
-			if(!doacks)
-			{
-				/* check if the time is up, and if it hasn't already
-				* been confirmed received, and if this is the first
-				time sending it, ie send based on delay */
-				if(p->enqT < curtime - r->weight &&
-					!(p->received) && !(p->sent))
-				{
-					/* re-send because timeout */
-					printf("DELAY EXPIRED\n");
-					/* mark the packet as having been sent */
-					p->sent = 1;
-					/* send it */
-					sendudp(n->name, p->msg, rte->name);
-					/* reset the timer */
-					p->enqT = curtime;
-				}
-				/* if it has been sent, then check the timeout on it
-					* and resend if timeout expires */
-				else if(p->sent && p->enqT < curtime - TIMEOUT)
-				{
-					printf("TIMEOUT OCCURRED\n");
-					p->sent = 0;
-					p->enqT = curtime;
-				}
-			}
-			else
-			{
-				if(p->enqT < curtime - r->weight)
-				{
-					sendudp(n->name, p->msg, rte->name);
-					tmp = p;
-					p = p->next;
-					free(dequeue_el(rte->ackq, tmp));
-				}
-			}
-			
-			if(p != NULL)
-				p = p->next;
-		}
-		
-		if(!doacks)
-		{
-			doacks = 1;
-		}
-		else
-		{
-			doacks = 0;
-		
-			rte = rte->next;
-		}
+		checkmsgdelays(n, rte);
+		checkackdelays(n, rte);
+
+		rte = rte->next;
 	}
 	
 	return;
@@ -663,17 +712,15 @@ void *threadloop(void *arg)
 		checktimeouts(me);
 		receivemsg(me->name);
 	}
-	
-	printlist(nodelist);
 
-    pthread_exit(NULL);	
+	pthread_exit(NULL);	
 	return NULL;
 }
 
 /* given a node create a thread for it */
 void spawnthread(struct node *n)
 {
-	if(pthread_create(&(n->thread), NULL, threadloop, n->name))
+	if(pthread_create(&(n->thread), NULL, (void*)&threadloop, n->name))
 	{
 		fprintf(stderr, "Error creating threads.\n");
 		exit(1);
@@ -683,7 +730,7 @@ void spawnthread(struct node *n)
 }
 
 /* signal a thread to stop execution */
-void sigkillthread(char name[])
+void sigkillthread(char* name)
 {
 	struct node *n = getnodefromname(name);
 	
@@ -712,42 +759,122 @@ void sigkillall()
 	return;
 }
 
+void usersendmessage()
+{
+	char src[BUFSIZE], dest[BUFSIZE], msg[BUFSIZE];
+	char send[BUFSIZE];
+	printf("Enter the name of the source node: ");
+	fgets(src, BUFSIZE, stdin);
+	printf("Enter the name of the destination node: ");
+	fgets(dest, BUFSIZE, stdin);
+	printf("Enter the message to send: ");
+	fgets(msg, BUFSIZE, stdin);
+    
+    /* remove trailing newline from the input buffers */
+    strtok(src, "\n");
+    strtok(dest, "\n");
+    strtok(msg, "\n");
+
+	struct routing_table_entry *rte;
+	struct node *n = getnodefromname(src);
+
+	if(n == NULL)
+	{
+		printf("[%s]Node does not exist\n", src);
+		return;
+	}
+
+	rte = getroutingtableentry(n, dest);
+    if(rte == NULL)
+    {
+		printf("[%s]Node does not exist\n", src);
+		return;
+    }
+	
+    /* ship off 3 versions */
+	sprintf(send, "%d`%s`%s`%s", reqack(rte->sendq), src, dest, msg);
+	enqueue(rte->sendq, send);
+    sprintf(send, "%d`%s`%s`%s", reqack(rte->sendq), src, dest, msg);
+	enqueue(rte->sendq, send);
+    sprintf(send, "%d`%s`%s`%s", reqack(rte->sendq), src, dest, msg);
+	enqueue(rte->sendq, send);
+}
+
+void useraddnode()
+{
+    char name[BUFSIZE];
+    printf("Enter the name of the node\n");
+    fgets(name, BUFSIZE, stdin);
+    
+    /* parse off the newline */
+    strtok(name, "\n");
+    
+    if(getnodefromname(name) != NULL)
+    {
+        printf("Node with name [%s] already exists\n", name);
+        return;
+    }
+    
+    addnode(name);
+    return;
+}
+
 void displaymenu()
 {
-	printf("\n\n\nEnter 0 to exit\n");
-	printf("Enter 1 to add a node\n");
-	printf("Enter 2 to remove a node\n");
-	printf("Enter 3 to add an edge\n");
-	printf("Enter 4 to modify an edge\n");
-	printf("Enter 5\n");
+	printf("\n\n----------------------\n");
+	printf("Enter 0 to exit\n");
+	printf("Enter 1 to send a message\n");
+	printf("Enter 2 to add a node\n");
+	printf("Enter 3 to remove a node\n");
+	printf("Enter 4 to add an edge\n");
+	printf("Enter 5 to modify an edge\n");
+	printf("Enter 6 to print the routing table\n");
+	printf("----------------------\n\n");
 	
 	return;
 }
 
-void usersendmessage()
-{
-	char src[BUFSIZE], dest[BUFSIZE], msg[BUFSIZE];
-	printf("Enter the name of the source node: ");
-	scanf("%s", src);
-	printf("Enter the name of the destination node: ");
-	scanf("%s", dest);
-	printf("Enter the message to send: ");
-	scanf("%s", msg);
-}
-
 void userloop()
 {
-	char c;
+	char c, ch;
 	
 	printf("-------------INUSERLOOP------------\n");
 	
 	while(c != '0')
 	{
-		c = getchar();
-		getchar();
+		displaymenu();
 		
-		if(c == '1')
-			sigkillthread("NodeB");
+		c = getchar();
+		
+		/* consume all the extra input */
+		while ((ch = getchar() != '\n') && (ch != EOF));
+		
+		switch(c)
+		{
+			case '0':
+				return;
+				break;
+			case '1':
+				usersendmessage();
+				break;
+			case '2':
+				useraddnode();
+				break;
+			case '3':
+				//userremovenode();
+				break;
+			case '4':
+				//useraddedge();
+				break;
+			case '5':
+				//usermodedge();
+				break;
+			case '6':
+				printlist(nodelist);
+				break;
+			default:
+				break;
+		}
 	}
 	
 	return;
@@ -759,71 +886,29 @@ int main()
 	/* initialize and create the nodes */
     initialize();
     createlogdir();
-    addnode("NodeA");
-    addnode("NodeB");
-    addnode("NodeC");
-    addedge("NodeA", "NodeB", 1, 0);
-    addedge("NodeB", "NodeC", 1, 0);
     
-    printf("Control in main!\n");
+    file = fopen("readoutput", "w");
+    parse_file("test.top");
     
-    char message0[BUFSIZE], message1[BUFSIZE];
+    printf("Letting nodes build their routing tables...\n");
+    usleep(25000000);
     
-    usleep(6000000);
+    addnode("i");
+    usleep(2000000);
     
-    printlist(nodelist);
+    addnode("j");
+    usleep(2000000);
+    addnode("o");
+    usleep(2000000);
+    addnode("p");
     
-    /* LETS SEND ON B TO A */
-    struct routing_table_entry *ql = getroutingtableentry(getnodefromname("NodeA"), "NodeC");
-    struct window *q = ql->sendq;
-    
-    sprintf(message0, "%d`NodeA`NodeC`Message0\n", reqack(q));
-    sprintf(message1, "%d`NodeA`NodeC`Message1\n", reqack(q));
-    
-    /* enqueue it and send it */
-    enqueue(q, message1);
-    enqueue(q, message0);
-    
-    /* loop for user control */
     userloop();
     
-    /* kill all threads and shut down */
+    fclose(file);
+    
     sigkillall();
-    fprintf(stderr, "Killed all threads\n");
-    pthread_exit(NULL);
-    
-    //printlist(nodelist);
-    
-    
-    sendudp("NodeA", message1, "NodeB");
-    
-    int i=0;
-    
-    while(i<100)
-    {/*
-        if(receivemsg("NodeA") > 0)
-        {
-            printf("\n\n\n\n\n\n\n\n");
-            printlist(nodelist);
-            printf("\n\n\n\n\n\n\n\n");
-            
-            i++;
-        }
-        
-        if(receivemsg("NodeB") > 0)
-        {
-            printf("\n\n\n\n\n\n\n\n");
-            printlist(nodelist);
-            printf("\n\n\n\n\n\n\n\n");
-            
-            i++;
-        }*/
-        i++;
-    }
-    
-    
-    
     pthread_exit(NULL);
     
     return 0;
 }
+
