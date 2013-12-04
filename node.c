@@ -36,7 +36,10 @@ struct routing_table_entry *rtappend(struct node *w, char name[],
     
     /* construct the rt entry */    
     new = malloc(sizeof(struct routing_table_entry));
-    
+    new->name = malloc(BUFSIZE * sizeof(char));
+    memset(new->name, 0, BUFSIZE);
+    new->through = malloc(BUFSIZE * sizeof(char));
+    memset(new->through, 0, BUFSIZE);
     new->delay = delay;
     new->drop = drop;
     new->weight = weight;
@@ -136,6 +139,8 @@ struct node *append(struct list *l, char name[])
     }
 
     struct node *w = malloc(sizeof(struct node));
+    w->name = malloc(BUFSIZE * sizeof(char));
+    memset(w->name, 0, BUFSIZE);
     strcpy(w->name, name);
     w->port = globalport++;
     w->next = NULL;
@@ -276,6 +281,8 @@ int enqueue(struct window *q, char* msg)
 	if(e == NULL)
 		return -1;
     
+    e->msg = malloc(BUFSIZE * sizeof(char));
+    memset(e->msg, 0, BUFSIZE);
 	strcpy(e->msg, msg);
     
     struct msgtok *tok = tokenmsg(msg);
@@ -383,7 +390,7 @@ struct packet *dequeue_el(struct window *q, struct packet *el)
     
     if(temp == NULL)
     {
-        printf("Error finding element to dequeue!\n");
+        fprintf(stderr, "Error finding element to dequeue!\n");
         exit(1);
     }
     
@@ -581,7 +588,7 @@ void checkackdelays(struct node *n, struct routing_table_entry *rte)
 	struct window *w = rte->ackq;
     if(w == NULL)
     {
-        printf("w is null??\n");
+        fprintf(stderr, "w is null??\n");
         exit(1);
     }
     
@@ -598,7 +605,7 @@ void checkackdelays(struct node *n, struct routing_table_entry *rte)
 			sendudp(n->name, p->msg, r->name);
 			struct packet *t = p;
 			p = p->next;
-			free(dequeue_el(w, t));
+			freepacket(dequeue_el(w, t));
 		}
 		else
 			p = p->next;
@@ -607,6 +614,11 @@ void checkackdelays(struct node *n, struct routing_table_entry *rte)
 	return;
 }
 
+void freepacket(struct packet* p)
+{
+    free(p->msg);
+    free(p);
+}
 void checkmsgdelays(struct node *n, struct routing_table_entry *rte)
 {
 	if(rte == NULL)
@@ -875,7 +887,7 @@ int main()
     printf("Letting nodes build their routing tables...\n");
     usleep(25000000);
     
-    addnode("i");
+    //addnode("i");
     //usleep(2000000);
     
     //addnode("j");

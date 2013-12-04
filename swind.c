@@ -127,7 +127,7 @@ void clearwindow(struct routing_table_entry *ql, int type)
             /* if it was just an ack then just advance the window
              and remove it from our buffer */
             if(type == enumpureack)
-                free(dequeue(q));
+                freepacket(dequeue(q));
             else
             {
                 /* we are dequeueing messages in our recv
@@ -139,7 +139,7 @@ void clearwindow(struct routing_table_entry *ql, int type)
                 printf("dequeued from my receive buffer\n");
                 
                 /* free the memory we were using */
-                free(el);
+                freepacket(el);
             }
             
             

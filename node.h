@@ -62,7 +62,7 @@ struct msgtok
 /* in this proxy enqT is for timeouts, acknum is the ack it is */
 struct packet
 {
-    char msg[BUFSIZE];
+    char *msg;
     time_t enqT;
     int acknum;
     int received;
@@ -92,9 +92,10 @@ struct routing_table_entry
 {
     struct window *sendq, *recvq;
     struct window *ackq;
-    char name[BUFSIZE];
+    char* name;
+    char* through;
     //planning
-    char through[BUFSIZE];
+
     int weight;
     int drop;
     int delay;
@@ -107,7 +108,7 @@ struct routing_table_entry
 struct node
 {
     struct routing_table_entry *routing_table;
-    char name[BUFSIZE];
+    char* name;
     int port, socket;
     
     pthread_t thread;
@@ -137,27 +138,27 @@ enum globalenums
 /* FUNCTIONS */
 
 /* for node.c */
-struct routing_table_entry *rtappend(struct node *w, char name[],
-		char through[], int delay, int drop, int weight);
-struct node *append(struct list *l, char name[]);
+struct routing_table_entry *rtappend(struct node *w, char* name,
+		char* through, int delay, int drop, int weight);
+struct node *append(struct list *l, char* name);
 void printwindow(struct window *q);
 int enqueue(struct window *q, char* msg);
 int comesfirst(int first, int a, int b);
 struct packet *dequeue(struct window *q);
-struct node *addnode(char name[]);
-void addedge(char nodeaname[], char nodebname[], int delay, int drop);
+struct node *addnode(char* name);
+void addedge(char* nodeaname, char* nodebname, int delay, int drop);
 int reqack(struct window *q);
 void getaddr(struct node *w);
-int getportfromname(char name[]);
+int getportfromname(char* name);
 struct packet *dequeue_el(struct window *q, struct packet *el);
-struct sockaddr *getaddrfromname(char name[]);
+struct sockaddr *getaddrfromname(char* name);
 void sendudp(char *src, char *msg, char *dest);
-int getsockfromname(char name[]);
-struct node *getnodefromname(char name[]);
-int setupmyport(char name[]);
+int getsockfromname(char* name);
+struct node *getnodefromname(char* name);
+int setupmyport(char* name);
 void spawnthread(struct node *n);
 void spawnallthreads();
-void sigkillthread(char name[]);
+void sigkillthread(char* name);
 void sigkillall();
 void *mainloop(void *arg);
 
@@ -180,6 +181,7 @@ int ihavemsg(struct window *q, int ack);
 struct msgtok *tokenmsg(char *msg);
 int interpret(char *msg);
 void freetok(struct msgtok *tok);
+void freepacket(struct packet* p);
 
 /* for dvr.c */
 /* set_interval
