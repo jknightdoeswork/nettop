@@ -449,6 +449,7 @@ void getaddr(struct node *w)
 int setupmyport(char* name)
 {
     char portchar[8];
+    memset(portchar, 0, 8);
     int sock;
     struct addrinfo hints, *info;
     
@@ -890,13 +891,13 @@ int main()
     addnode("i");
     usleep(2000000);
     
-    //addnode("j");
-    //usleep(2000000);
-    //addnode("o");
-    //usleep(2000000);
-    //addnode("p");
+    addnode("j");
+    usleep(2000000);
+    addnode("o");
+    usleep(2000000);
+    addnode("p");
     
-    //userloop();
+    userloop();
     
     fclose(file);
     
