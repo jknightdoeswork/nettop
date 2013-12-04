@@ -39,6 +39,7 @@
 #define TIMEOUTVAL 1
 #define LOCALHOST "127.0.0.1"
 #define DELIM "`"
+#define CONTROLCHARS "&+-"
 
 /* GLOBALS */
 extern struct list *nodelist;
@@ -51,6 +52,7 @@ struct msgtok
 {
     char *ack, *src, *dest, *pay;
     int acknum;
+    int type;
 };
 
 /* in this proxy enqT is for timeouts, acknum is the ack it is */
@@ -120,9 +122,10 @@ struct list
 /* enum for the type of queue we are looking at */
 enum globalenums
 {
-    enumnack = -1,
-    enumpureack = 0,
-    enumrealmsg = 1,
+    enumnack = 1,
+    enumpureack = 2,
+    enumrealmsg = 3,
+    enumdvrmsg = 4,
 };
 
 /* FUNCTIONS */
@@ -171,5 +174,39 @@ struct msgtok *tokenmsg(char *msg);
 int interpret(char *msg);
 void freetok(struct msgtok *tok);
 
+/* for dvr.c */
+/* set_interval
+ * Updates the duration between dvr steps.
+ * Default is 2 seconds.
+ */
+void set_interval(int seconds);
+
+/* dvr_step
+ * Send dvr information to neighbours
+ * if current time - laststep > interval.
+ * returns current time if it sent info, and last
+ * step otherwise, so that it can be called in
+ * succession using the return value as last step.
+ * eg)
+ *      time_t dvr_time = dvr_step(source_node, -1)
+ *      ...
+ *      dvr_time = dvr_step(source_node, dvr_time);
+ */
+time_t dvr_step(struct node* a, time_t laststep);
+
+/* send_dvr_message
+ * used by dvr_step to send routing table from src to dest.
+ * sends each routing table entry as a seperate message
+ */
+void send_dvr_message(struct node* src, char* dest);
+
+/* handledvrmessage
+ * updates the routing table using the entry stored in msg.
+ * msg->pay is the weight
+ * msg->src is the neighbour
+ * msg->dest is the destination node
+ * node a is the routing table we will update
+ */
+void handledvrmessage(struct node* nodea, struct msgtok* msg);
 
 #endif

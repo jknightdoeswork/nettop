@@ -68,11 +68,11 @@ int receivemsg(char *name)
     
     struct msgtok *tok = tokenmsg(recvbuf);
     
-    int type = interpret(tok->pay);
-    
-    if(type == enumpureack)
+    if(tok->type == enumdvrmsg)
+         handledvrmessage(getnodefromname(name), tok);
+    else if(tok->type == enumpureack)
         handleack(name, recvbuf);
-    else if(type == enumnack)
+    else if(tok->type == enumnack)
         handlenack(name, recvbuf);
     else
         handlemsg(name, recvbuf);
@@ -88,6 +88,8 @@ int interpret(char *msg)
         return enumpureack;
     else if(msg[0] == '-')
         return enumnack;
+    else if (msg[0] == '&')
+        return enumdvrmsg;
     else
         return enumrealmsg;
 }
@@ -220,10 +222,17 @@ struct msgtok *tokenmsg(char *msg)
     msgtok->src = malloc(BUFSIZE);
     msgtok->dest = malloc(BUFSIZE);
     msgtok->pay = malloc(BUFSIZE);
+    msgtok->type = interpret(msg);
     
     /* use temp so we don't break the original message */
     strcpy(temp, msg);
-    
+   
+    /* interpretable character */
+    if (msgtok->type != enumrealmsg) {
+        tok = strtok_r(temp, CONTROLCHARS, &saveptr);
+        temp = NULL; // only call strtok_r(temp,...) once
+    }
+
     /* ack */
     tok = strtok_r(temp, DELIM, &saveptr);
     if(tok == NULL)
