@@ -12,7 +12,7 @@ int globalport = 3490;
 FILE *file;
 
 /* add a node entry to our global list of nodes */
-struct node *addnode(char name[])
+struct node *addnode(char* name)
 {
     /* add it to the set of all nodes */
     /* add it to every existing nodes list of queues */
@@ -26,8 +26,8 @@ struct node *addnode(char name[])
 
 /* given a node, and a name for our destination entry, add
  an RTE for the destination so our node knows about it */
-struct routing_table_entry *rtappend(struct node *w, char name[],
-		char through[], int delay, int drop, int weight)
+struct routing_table_entry *rtappend(struct node *w, char* name,
+		char* through, int delay, int drop, int weight)
 {
     struct routing_table_entry *tmp;
     struct routing_table_entry *new;
@@ -120,7 +120,7 @@ void addedge(char* nodeaname, char* nodebname, int delay, int drop)
 
 /* given our (global) list of nodes, append a new node */
 /* todo-remove it from handling RTE's */
-struct node *append(struct list *l, char name[])
+struct node *append(struct list *l, char* name)
 {
     printf("Adding thread[%s]\n", name);
     /* fail if l is null */
@@ -170,7 +170,7 @@ struct node *append(struct list *l, char name[])
 }
 
 /* given a node name, get it's corresponding port */
-int getportfromname(char name[])
+int getportfromname(char* name)
 {
     struct node *w = getnodefromname(name);
     if (w == NULL)
@@ -446,7 +446,7 @@ void getaddr(struct node *w)
 }
 
 /* create the socket for a node to send from */
-int setupmyport(char name[])
+int setupmyport(char* name)
 {
     char portchar[8];
     int sock;
@@ -483,7 +483,7 @@ int setupmyport(char name[])
 }
 
 /* get the node given it's name */
-struct node *getnodefromname(char name[])
+struct node *getnodefromname(char* name)
 {
     struct node *w = nodelist->head;
     
@@ -501,7 +501,7 @@ struct node *getnodefromname(char name[])
 }
 
 /* get the address to send to for a node from it's name */
-struct sockaddr *getaddrfromname(char name[])
+struct sockaddr *getaddrfromname(char* name)
 {
     struct node* w = getnodefromname(name);
     if (w == NULL)
@@ -510,7 +510,7 @@ struct sockaddr *getaddrfromname(char name[])
 }
 
 /* get the socket from the name */
-int getsockfromname(char name[])
+int getsockfromname(char* name)
 {
     struct node* w = getnodefromname(name);
     if (w == NULL)
@@ -725,7 +725,7 @@ void spawnthread(struct node *n)
 }
 
 /* signal a thread to stop execution */
-void sigkillthread(char name[])
+void sigkillthread(char* name)
 {
 	struct node *n = getnodefromname(name);
 	
