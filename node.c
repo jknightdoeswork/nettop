@@ -139,6 +139,7 @@ struct node *append(struct list *l, char* name)
     }
 
     struct node *w = malloc(sizeof(struct node));
+    w->routing_table = NULL;
     w->name = malloc(BUFSIZE * sizeof(char));
     memset(w->name, 0, BUFSIZE);
     strcpy(w->name, name);
@@ -890,13 +891,13 @@ int main()
     addnode("i");
     usleep(2000000);
     
-    //addnode("j");
-    //usleep(2000000);
-    //addnode("o");
-    //usleep(2000000);
-    //addnode("p");
+    addnode("j");
+    usleep(2000000);
+    addnode("o");
+    usleep(2000000);
+    addnode("p");
     
-    //userloop();
+    userloop();
     
     fclose(file);
     
