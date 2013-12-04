@@ -110,6 +110,8 @@ struct node
     struct sockaddr *addr;
     
     struct node *next, *prev;
+
+    FILE* logfile;
 };
 
 /* holds a nodes lists of buffers it can send with */
@@ -208,5 +210,16 @@ void send_dvr_message(struct node* src, char* dest);
  * node a is the routing table we will update
  */
 void handledvrmessage(struct node* nodea, struct msgtok* msg);
+
+/* for log.c */
+/* createlogfile
+ * creates the log file for the node at logs/timestamp/nodename
+ */
+FILE* createlogfile(char* nodename);
+
+/* createlogdir
+ * creates the directory logs/timestamp
+ */
+void createlogdir();
 
 #endif

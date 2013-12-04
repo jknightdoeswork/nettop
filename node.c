@@ -16,6 +16,7 @@ struct node *addnode(char name[])
     /* append handles it all because append is magic */
     
     struct node *n = append(nodelist, name);
+    fprintf(stderr, "spawning thread\n");
     
     spawnthread(n);
     
@@ -112,43 +113,55 @@ void addedge(char* nodeaname, char* nodebname, int weight)
 /* todo-remove it from handling RTE's */
 struct node *append(struct list *l, char name[])
 {
+    fprintf(stderr, "%d\n", __LINE__);
     /* fail if l is null */
     if(l == NULL)
     {
         printf("List is NULL!\n");
         return NULL;
     }
-    
+     fprintf(stderr, "%d\n", __LINE__);   
     /* check if name already exists */ 
     /* otherwise there is an el, append to the end */
     struct node *nodecheck = getnodefromname(name);
+    fprintf(stderr, "%d\n", __LINE__);
     if(nodecheck != NULL) 
     {   
         return nodecheck;
     }
-
+    fprintf(stderr, "%d\n", __LINE__);
     struct node *w = malloc(sizeof(struct node));
+    if (w == NULL) {
+        fprintf(stderr, "OUT OF MEMORY\n");
+        exit(1);
+    }
+    fprintf(stderr, "%d\n", __LINE__);
     strcpy(w->name, name);
+    fprintf(stderr, "%d\n", __LINE__);
     w->port = globalport++;
+    fprintf(stderr, "%d\n", __LINE__);
     w->next = NULL;
+    fprintf(stderr, "%d\n", __LINE__);
     w->dead=0;
+    //w->logfile = createlogfile(name);
     
     if(l->tail != NULL)
         l->tail->next = w;
-    
+    fprintf(stderr, "%d\n", __LINE__);
     w->prev = l->tail;
+    fprintf(stderr, "%d\n", __LINE__);
     l->tail = w;
-    
+        fprintf(stderr, "%d\n", __LINE__);
     /* then it is also the head */
     if((l->sz)++ == 0)
     {
         l->head = w;
     }
-    
+        fprintf(stderr, "%d\n", __LINE__);
     w->socket = setupmyport(name);
-     
+         fprintf(stderr, "%d\n", __LINE__);
     getaddr(w); /* port to make sense */
-    
+        fprintf(stderr, "%d\n", __LINE__);
     return w;
 }
 
@@ -467,14 +480,12 @@ int setupmyport(char name[])
 struct node *getnodefromname(char name[])
 {
     struct node *w = nodelist->head;
-    
     while(w != NULL)
     {
         if(strcmp(w->name, name) == 0)
         {
             return w;
         }
-        
         w = w->next;
     }
     
@@ -502,7 +513,12 @@ int getsockfromname(char name[])
 /* initialize some basic features of the program */
 void initialize()
 {
+    createlogdir();
     nodelist = malloc(sizeof(struct list));
+    if (nodelist == NULL) {
+        fprintf(stderr, "OUT OF MEMORY\n");
+    }
+    bzero(nodelist, sizeof(struct list));
     srand(time(NULL));
     
     return;
@@ -738,10 +754,13 @@ int main()
 {
 	/* initialize and create the nodes */
     initialize();
+    fprintf(stderr, "adding nodes 1\n");
     addnode("NodeA");
+    fprintf(stderr, "adding nodes 2\n");
     addnode("NodeB");
+    fprintf(stderr, "adding nodes 3\n");
     addnode("NodeC");
-    
+    fprintf(stderr, "adding edges\n");   
     addedge("NodeA", "NodeB", 2);
     
     printf("Control in main!\n");
