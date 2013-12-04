@@ -227,7 +227,7 @@ struct routing_table_entry *rtappend(struct node *w, char* name,
         {
             if(strcmp(tmp->name, name) == 0)
             {
-                printf("RTE already exists for node: %s\n", name);
+                fprintf(stderr, "RTE already exists for node: %s\n", name);
                 return NULL;
             }
             
@@ -599,6 +599,7 @@ void getaddr(struct node *w)
 int setupmyport(char* name)
 {
     char portchar[8];
+    memset(portchar, 0, 8);
     int sock;
     struct addrinfo hints, *info;
     
@@ -672,6 +673,7 @@ int getsockfromname(char* name)
 void initialize()
 {
     nodelist = malloc(sizeof(struct list));
+    memset(nodelist, 0, sizeof(struct list));
     srand(time(NULL));
     
     return;
@@ -1173,8 +1175,6 @@ int main()
     
     file = fopen("readoutput", "w");
     parse_file("test.top");
-    
-    printf("Letting nodes build their routing tables...\n");
     
     userloop();
     
