@@ -98,7 +98,7 @@ struct routing_table_entry
 /* is the window used for reliable transfer between nodes */
 struct node
 {
-    struct routing_table_entry *qlist;
+    struct routing_table_entry *routing_table;
     char name[BUFSIZE];
     int port, socket;
     
@@ -145,12 +145,14 @@ void sendudp(char *src, char *msg, char *dest);
 int getsockfromname(char name[]);
 struct node *getnodefromname(char name[]);
 int setupmyport(char name[]);
-struct routing_table_entry *get_routing_table_entry(char *src, char *dest);
 void spawnthread(struct node *n);
 void spawnallthreads();
 void sigkillthread(char name[]);
 void sigkillall();
 void *mainloop(void *arg);
+
+struct routing_table_entry *getroutingtableentry(struct node *src, char *dest);
+
 
 /* for swind.c */
 int plusone(int i);
