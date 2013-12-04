@@ -30,7 +30,7 @@
 
 /* DEFINES */
 
-#define DEBUGWINDOWS 1
+#define DEBUGWINDOWS 0
 
 #define TIMEOUT 10
 #define DROPPROB 0
@@ -51,6 +51,7 @@ extern int globalport;
 /* used for holding tokenized messages */
 struct msgtok
 {
+    char *orig;
     char *ack, *src, *dest, *pay;
     int acknum;
     int type;
@@ -93,6 +94,7 @@ struct routing_table_entry
     //planning
     char through[BUFSIZE];
     int weight;
+    int drop;
     
     // eplanning
     struct routing_table_entry *next, *prev;
@@ -134,14 +136,15 @@ enum globalenums
 /* FUNCTIONS */
 
 /* for node.c */
-struct routing_table_entry *rtappend(struct node* nodea, char name[], char through[], int weight);
+struct routing_table_entry *rtappend(struct node* nodea, char name[],
+				     char through[], int weight, int drop);
 struct node *append(struct list *l, char name[]);
 void printwindow(struct window *q);
 int enqueue(struct window *q, char* msg);
 int comesfirst(int first, int a, int b);
 struct packet *dequeue(struct window *q);
 struct node *addnode(char name[]);
-void addedge(char nodeaname[], char nodebname[], int weight);
+void addedge(char nodeaname[], char nodebname[], int weight, int drop);
 int reqack(struct window *q);
 void getaddr(struct node *w);
 int getportfromname(char name[]);
@@ -163,15 +166,15 @@ struct routing_table_entry *getroutingtableentry(struct node *src, char *dest);
 /* for swind.c */
 int plusone(int i);
 int receivemsg(char *name);
-int iamdest(char *name, char *msg);
+int iamdest(char *name, struct msgtok *tok);
 int msginorder(struct window *q, int ack);
-void sendnacks(struct window *q, char *msg);
-void sendbacknack(char *msg, int out);
-void sendbackack(char *msg);
+void sendnacks(struct window *q, struct msgtok *tok);
+void sendbacknack(struct msgtok *tok, int out);
+void sendbackack(struct msgtok *tok);
 
-void handleack(char *name, char *msg);
-void handlenack(char *name, char *msg);
-void handlemsg(char *name, char *msg);
+void handleack(char *name, struct msgtok *);
+void handlenack(char *name, struct msgtok *);
+void handlemsg(char *name, struct msgtok *);
 int ihavemsg(struct window *q, int ack);
 struct msgtok *tokenmsg(char *msg);
 int interpret(char *msg);
@@ -222,5 +225,5 @@ FILE* createlogfile(char* nodename);
  * creates the directory logs/timestamp
  */
 void createlogdir();
-
+void log_routing_table(struct node* a, int timestep);
 #endif

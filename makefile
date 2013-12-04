@@ -14,7 +14,7 @@ swind.o: swind.c
 	$(CC) $(CFLAGS) -c swind.c
 
 node: node.o swind.o parser.o dvr.o log.o
-	$(CC) $(CFLAGS) -o node node.o swind.o parser.o dvr.o log.o -lpthread
+	$(CC) $(CFLAGS) -o node node.o log.o swind.o parser.o dvr.o -lpthread
 
 parser.o: parser.c
 	$(CC) $(CFLAGS) -c parser.c

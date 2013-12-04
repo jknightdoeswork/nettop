@@ -71,11 +71,11 @@ int receivemsg(char *name)
     if(tok->type == enumdvrmsg)
          handledvrmessage(getnodefromname(name), tok);
     else if(tok->type == enumpureack)
-        handleack(name, recvbuf);
+        handleack(name, tok);
     else if(tok->type == enumnack)
-        handlenack(name, recvbuf);
+        handlenack(name, tok);
     else
-        handlemsg(name, recvbuf);
+        handlemsg(name, tok);
     
     freetok(tok);
     return bytes;
@@ -199,6 +199,7 @@ void freetok(struct msgtok *tok)
     {
         /* free all of the msgtok buffers then free
          the msgtok itself */
+	free(tok->orig);
         free(tok->ack);
         free(tok->src);
         free(tok->dest);
@@ -218,36 +219,46 @@ struct msgtok *tokenmsg(char *msg)
     
     struct msgtok *msgtok = malloc(sizeof(struct msgtok));
     
+    msgtok->orig = malloc(BUFSIZE);
     msgtok->ack = malloc(BUFSIZE);
     msgtok->src = malloc(BUFSIZE);
     msgtok->dest = malloc(BUFSIZE);
     msgtok->pay = malloc(BUFSIZE);
     msgtok->type = interpret(msg);
     
+    /* because we do a lot of forwarding, store the original
+     * message in the token as well */
+    strcpy(msgtok->orig, msg);
     /* use temp so we don't break the original message */
     strcpy(temp, msg);
    
     /* interpretable character */
     if (msgtok->type != enumrealmsg) {
         tok = strtok_r(temp, CONTROLCHARS, &saveptr);
-        temp = NULL; // only call strtok_r(temp,...) once
+        temp = tok; // only call strtok_r(temp,...) once
     }
+    
 
     /* ack */
-    tok = strtok_r(temp, DELIM, &saveptr);
-    if(tok == NULL)
+    if(msgtok->type != enumdvrmsg)
     {
-        printf("Error tokenizing ack!\n");
-        exit(1);
+	tok = strtok_r(temp, DELIM, &saveptr);
+	if(tok == NULL)
+	{
+		printf("Error tokenizing ack!\n");
+		exit(1);
+	}
+	/* store the ack in both character and integer format so we
+	can easily reference it's value, as well as add it to messages
+	without relying heavily on temporary variables and sprintf */
+	strcpy(msgtok->ack, tok);
+	msgtok->acknum = atoi(msgtok->ack);
+	
+	temp = NULL;
     }
-    /* store the ack in both character and integer format so we
-     can easily reference it's value, as well as add it to messages
-     without relying heavily on temporary variables and sprintf */
-    strcpy(msgtok->ack, tok);
-    msgtok->acknum = atoi(msgtok->ack);
     
     /* src */
-    tok = strtok_r(NULL, DELIM, &saveptr);
+    tok = strtok_r(temp, DELIM, &saveptr);
     if(tok == NULL)
     {
         printf("Error tokenizing src!\n");
@@ -265,39 +276,35 @@ struct msgtok *tokenmsg(char *msg)
     strcpy(msgtok->dest, tok);
     
     /*payload */
-    tok = strtok_r(NULL, DELIM, &saveptr);
-    if(tok == NULL)
+    if (msgtok->type == enumrealmsg || msgtok->type == enumdvrmsg)
     {
-        printf("Error tokenizing payload!\n");
-        exit(1);
+	tok = strtok_r(NULL, DELIM, &saveptr);
+	if(tok == NULL)
+	{
+	    printf("[%s]\nError tokenizing payload!\n", msgtok->orig);
+	    exit(1);
+	}
+	else
+	    strcpy(msgtok->pay, tok);
     }
-    strcpy(msgtok->pay, tok);
     
     return msgtok;
 }
 
 /* return true if I (given my name and a message)
  am the intended recipient of the message */
-int iamdest(char *name, char *msg)
+int iamdest(char *name, struct msgtok *tok)
 {
-    struct msgtok *tok = tokenmsg(msg);
     if(strcmp(tok->dest, name) == 0)
-    {
-        freetok(tok);
         return 1;
-    }
     else
-    {
-        freetok(tok);
         return 0;
-    }
 }
 
 /* send back an ack given a message */
-void sendbackack(char *msg)
+void sendbackack(struct msgtok *tok)
 {
     char ackmsg[BUFSIZE];
-    struct msgtok *tok = tokenmsg(msg);
     
     /* reverse dest and src because we are sending back to them */
     sprintf(ackmsg, "+%d`%s`%s`", tok->acknum, tok->dest, tok->src);
@@ -306,25 +313,20 @@ void sendbackack(char *msg)
     rte = getroutingtableentry(getnodefromname(tok->dest), tok->src);
     
     if(rte == NULL)
-    {
-	    freetok(tok);
 	    return;
-    }
     
     /* enqueue it to my delay queue so it waits
      the appropriate length of time before being sent */
     enqueue(rte->ackq, ackmsg);
     //sendudp(tok->dest, ackmsg, tok->src);
     
-    freetok(tok);
     return;
 }
 
 /* send back a nack given a message */
-void sendbacknack(char *msg, int out)
+void sendbacknack(struct msgtok *tok, int out)
 {
     char nackmsg[BUFSIZE];
-    struct msgtok *tok = tokenmsg(msg);
     
     /* reverse dest and src */
     sprintf(nackmsg, "-%d`%s`%s`", out, tok->dest, tok->src);
@@ -333,35 +335,29 @@ void sendbacknack(char *msg, int out)
     rte = getroutingtableentry(getnodefromname(tok->dest), tok->src);
     
     if(rte == NULL)
-    {
-	    freetok(tok);
 	    return;
-    }
     
     /* enqueue it to my delay queue so it waits
      the appropriate length of time before being sent */
     enqueue(rte->ackq, nackmsg);
     //sendudp(tok->dest, nackmsg, tok->src);
     
-    freetok(tok);
     return;
 }
 
 /* send back nacks for all messages outstanding
  (out of order) */
-void sendnacks(struct window *q, char *msg)
+void sendnacks(struct window *q, struct msgtok *tok)
 {
     struct packet *el = q->head;
     int outack = q->first;
-    
-    struct msgtok *tok = tokenmsg(msg);
     
     while(el != NULL)
     {
         while(el->acknum != outack)
         {
             /* then outack is an outstanding ack */
-            sendbacknack(msg, outack);
+            sendbacknack(tok, outack);
             outack++;
             
             /* stop if we reach the end; should only happen
@@ -374,31 +370,34 @@ void sendnacks(struct window *q, char *msg)
         el = el->next;
     }
     
-    freetok(tok);
     return;
 }
 
 /* handle the message if it is an ack (ie marking the packets
  as having been successfully received) */
-void handleack(char *name, char *msg)
+void handleack(char *name, struct msgtok *tok)
 {
-    /* I just received a pure ack confirming a message I sent */
-    printf("Received an ack: %s\n-----------\n", msg);
-    
-    /* tokenize the message */
-    struct msgtok *tok = tokenmsg(msg);
-    
     /* forward it if it isn't intended for me */
-    if(!iamdest(name, msg))
+    if(!iamdest(name, tok))
     {
+	    printf("Forwarding ack!\n");
         /* i am not the destination so forward it towards the
          real destination. the msg will still contain the original
          sender, so we won't modify the message */
-        sendudp(name, msg, tok->dest);
+	struct routing_table_entry *rte;
+	rte = getroutingtableentry(getnodefromname(name), tok->dest);
+	
+	/* put it in queue to handle delays, and then let
+	 * our thread handle it when the delay comes up */
+	enqueue(rte->ackq, tok->orig);
+        //sendudp(name, tok->orig, tok->dest);
         
-        freetok(tok);
         return;
     }
+    
+    /* I just received a pure ack confirming a message I sent */
+    printf("Received an ack: [#%d]:[%s]-[%s]\n-----------\n",
+	    tok->acknum, tok->dest, tok->src);
     
     /* the source of the message is the "dest" of my queue */
     struct routing_table_entry *ql = getroutingtableentry(getnodefromname(name), tok->src);
@@ -427,39 +426,42 @@ void handleack(char *name, char *msg)
     
     if(el == NULL)
     {
-        printf("[%s]Error finding message corresponding to ack# [%d]\n",
-               name, ack);
-        
-        printwindow(q);
-        exit(1);
+	    printf("Received duplicate ack!\n");
+	    // duplicate acks are okay if we blindly re-send, but
+	    // they did actually receive it ie if timeouts are small
+	    // and it 'timed out' but is still in the network
     }
     
     clearwindow(ql, enumpureack);
     
-    freetok(tok);
     return;
 }
 
 /* handle if we received a nack. (ie a packet was
  lost or delayed) */
-void handlenack(char *name, char *msg)
+void handlenack(char *name, struct msgtok *tok)
 {
-    printf("Received a nack: %s\n-----------\n", msg);
-    
-    struct msgtok *tok = tokenmsg(msg);
-    
     /* forward it if it isn't intended for me, delays were calculated
      by the main node */
-    if(!iamdest(name, msg))
+    if(!iamdest(name, tok))
     {
+	    printf("Forwarding nack\n");
         /* i am not the destination so forward it towards the
          real destination. the msg will still contain the original
          sender, so we won't modify the message */
-        sendudp(name, msg, tok->dest);
+	struct routing_table_entry *rte;
+	rte = getroutingtableentry(getnodefromname(name), tok->dest);
+	
+	/* put it in queue to handle delays, and then let
+	 * our thread handle it when the delay comes up */
+	enqueue(rte->ackq, tok->orig);
+        //sendudp(name, tok->orig, tok->dest);
         
-        freetok(tok);
         return;
     }
+    
+    printf("Received a nack: [#%d]:[%s]-[%s]\n-----------\n",
+	    tok->acknum, tok->dest, tok->src);
     
     struct routing_table_entry *ql = getroutingtableentry(getnodefromname(tok->dest), tok->src);
     
@@ -488,30 +490,33 @@ void handlenack(char *name, char *msg)
         el = el->next;
     }
     
-    freetok(tok);
     return;
 }
 
 /* given a real message, interpret it and send back an ack
  saying that I've successfully received the message */
-void handlemsg(char *name, char *msg)
+void handlemsg(char *name, struct msgtok *tok)
 {
-    struct msgtok *tok = tokenmsg(msg);
-    
-    printf("Received a message:\n[#%d][%s][%s]\n%s-----------\n",
-           tok->acknum, tok->src, tok->dest, tok->pay);
-    
     /* delays were calculated by the main node */
-    if(!iamdest(name, msg))
+    if(!iamdest(name, tok))
     {
+	    printf("Forwarding message!\n");
         /* i am not the destination so forward it towards the
          real destination. the msg will still contain the original
          sender, so we won't modify the message */
-        sendudp(name, msg, tok->dest);
+	struct routing_table_entry *rte;
+	rte = getroutingtableentry(getnodefromname(name), tok->dest);
+	
+	/* put it in queue to handle delays, and then let
+	 * our thread handle it when the delay comes up */
+	enqueue(rte->ackq, tok->orig);
+        //sendudp(name, tok->orig, tok->dest);
         
-        freetok(tok);
         return;
     }
+    
+    printf("Received a message:\n[#%d][%s]-[%s]\n%s-----------\n",
+           tok->acknum, tok->src, tok->dest, tok->pay);
     
     /* if we get here then I was the intended recipient so handle
      it properly */
@@ -534,25 +539,24 @@ void handlemsg(char *name, char *msg)
     if(ihavemsg(q, ack) || outside(q, ack))
     {
         /* duplicate message retransmit ack */
-        sendbackack(msg);
+        sendbackack(tok);
     }
     else
     {
         /* but it is still a valid message, so buffer it
          in the meantime */
-        enqueue(q, msg);
+        enqueue(q, tok->orig);
         
         /* and send back an ack for the message */
-        sendbackack(msg);
+        sendbackack(tok);
         
         /* also send nacks if message out of order */
         if(!msginorder(q, ack))
-            sendnacks(q, msg);
+            sendnacks(q, tok);
         
         /* and clear the queue */
         clearwindow(ql, enumrealmsg);
     }
     
-    freetok(tok);
     return;
 }

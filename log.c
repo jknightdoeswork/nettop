@@ -7,6 +7,7 @@
 #include <strings.h>
 #include <time.h>
 #include <errno.h>
+#include "node.h"
 
 #define MAXFOLDERSIZE 64
 char folderpath[MAXFOLDERSIZE];
@@ -16,7 +17,10 @@ void createlogdir()
     bzero(folderpath, MAXFOLDERSIZE);
     time_t curtime;
     time(&curtime);
-    strftime(folderpath, MAXFOLDERSIZE, "logs/%d-%m-%Y-%T", localtime(&curtime));
+
+    //strftime(folderpath, MAXFOLDERSIZE, "logs/%d-%m-%Y-%T", localtime(&curtime));
+
+    sprintf(folderpath, "logs/%d/", (int)curtime);
     fprintf(stderr, "about to create folder at path: %s\n", folderpath);
     if ((error = mkdir(folderpath, S_IREAD | S_IEXEC | S_IWRITE)) != 0)
     {
@@ -38,6 +42,22 @@ FILE* createlogfile(char* nodename)
     to_return = fopen(namepath, "w");
     
     return to_return;
+}
+
+void log_routing_table(struct node* a, int timestep)
+{
+    FILE* logfile = a->logfile;
+    struct routing_table_entry* rte = a->routing_table;
+    fprintf(logfile, "=====================\n%s Routing Table At Timestep %d\n", a->name, timestep);
+    fprintf(logfile, "dest\tnexthop\tweight\n");
+
+    while (rte != NULL)
+    {
+        fprintf(logfile, "%s\t%s\t%d\n", rte->name, rte->through, rte->weight);
+        rte = rte->next;
+    }
+    fprintf(logfile, "=====================\n");
+    fflush(logfile);
 }
 
 /*int main() {

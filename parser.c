@@ -38,7 +38,7 @@ void parse_file(char* filename) {
         addnode(nodeaname);
         addnode(nodebname);
         // TODO CALCULATE WEIGHTS
-        addedge(nodeaname, nodebname, weight);
+        addedge(nodeaname, nodebname, weight, 0);
         free(lineptr);
         lineptr = NULL;
 	}
