@@ -98,18 +98,18 @@ int interpret(char *msg)
 }
 
 /* clear all packets in a window that are now in order */
-void clearwindow(struct routing_table_entry *ql, int type)
+void clearwindow(struct windowlist *wl, int type)
 {
     struct window *q;
     
     switch(type)
     {
         case enumpureack:
-            q= ql->sendq;
+            q= wl->sendq;
             break;
             
         case enumrealmsg:
-            q = ql->recvq;
+            q = wl->recvq;
             break;
     }
     
@@ -189,7 +189,7 @@ void freetok(struct msgtok *tok)
     {
         /* free all of the msgtok buffers then free
          the msgtok itself */
-	free(tok->orig);
+	    free(tok->orig);
         free(tok->ack);
         free(tok->src);
         free(tok->dest);
@@ -298,16 +298,17 @@ void sendbackack(struct msgtok *tok)
     
     /* reverse dest and src because we are sending back to them */
     sprintf(ackmsg, "+%d`%s`%s`", tok->acknum, tok->dest, tok->src);
-    
-    struct routing_table_entry *rte;
-    rte = getroutingtableentry(getnodefromname(tok->dest), tok->src);
-    
-    if(rte == NULL)
+   
+    struct windowlist* wl = getwindowlist(getnodefromname(tok->dest), tok->src);
+     
+    if(wl == NULL) {
+        fprintf(stderr, "sendbackack could not find window list %s-%s\n", tok->dest, tok->src);
 	    return;
+    }
     
     /* enqueue it to my delay queue so it waits
      the appropriate length of time before being sent */
-    enqueue(rte->ackq, ackmsg);
+    enqueue(wl->ackq, ackmsg);
     //sendudp(tok->dest, ackmsg, tok->src);
     
     return;
@@ -321,15 +322,16 @@ void sendbacknack(struct msgtok *tok, int out)
     /* reverse dest and src */
     sprintf(nackmsg, "-%d`%s`%s`", out, tok->dest, tok->src);
     
-    struct routing_table_entry *rte;
-    rte = getroutingtableentry(getnodefromname(tok->dest), tok->src);
-    
-    if(rte == NULL)
+    struct windowlist* wl = getwindowlist(getnodefromname(tok->dest), tok->src);
+     
+    if(wl == NULL) {
+        fprintf(stderr, "sendbacknack could not find window list %s-%s\n", tok->dest, tok->src);
 	    return;
-    
+    }
+        
     /* enqueue it to my delay queue so it waits
      the appropriate length of time before being sent */
-    enqueue(rte->ackq, nackmsg);
+    enqueue(wl->ackq, nackmsg);
     //sendudp(tok->dest, nackmsg, tok->src);
     
     return;
@@ -374,12 +376,12 @@ void handleack(char *name, struct msgtok *tok)
         /* i am not the destination so forward it towards the
          real destination. the msg will still contain the original
          sender, so we won't modify the message */
-	struct routing_table_entry *rte;
-	rte = getroutingtableentry(getnodefromname(name), tok->dest);
+        struct windowlist* wl = NULL;
+        wl = getwindowlist(getnodefromname(name), tok->dest);
 	
-	/* put it in queue to handle delays, and then let
-	 * our thread handle it when the delay comes up */
-	enqueue(rte->ackq, tok->orig);
+	    /* put it in queue to handle delays, and then let
+	    * our thread handle it when the delay comes up */
+	    enqueue(wl->ackq, tok->orig);
         //sendudp(name, tok->orig, tok->dest);
         
         return;
@@ -390,14 +392,17 @@ void handleack(char *name, struct msgtok *tok)
 	    tok->acknum, tok->dest, tok->src);
     
     /* the source of the message is the "dest" of my queue */
-    struct routing_table_entry *ql = getroutingtableentry(getnodefromname(name), tok->src);
+    struct windowlist *dwl = getwindowlist(getnodefromname(name), tok->src);
     
-    if(ql == NULL)
+    if(dwl == NULL)
+    {
+        fprintf(stderr, "handleack could not find windowlist %s-%s\n", name, tok->src);
 	    return;
+    }
     
     /* now it's an ack confirming our message, so we want
      the sendq */
-    struct window *q = ql->sendq;
+    struct window *q = dwl->sendq;
     
     struct packet *el = q->head;
     int ack = tok->acknum;
@@ -422,7 +427,7 @@ void handleack(char *name, struct msgtok *tok)
 	    // and it 'timed out' but is still in the network
     }
     
-    clearwindow(ql, enumpureack);
+    clearwindow(dwl, enumpureack);
     
     return;
 }
@@ -439,12 +444,19 @@ void handlenack(char *name, struct msgtok *tok)
         /* i am not the destination so forward it towards the
          real destination. the msg will still contain the original
          sender, so we won't modify the message */
-	struct routing_table_entry *rte;
-	rte = getroutingtableentry(getnodefromname(name), tok->dest);
+    
+        struct windowlist *wl;
+        wl = getwindowlist(getnodefromname(name), tok->dest);
+        if (wl == NULL)
+        {
+            fprintf(stderr, "handlenack could not find windowlist %s-%s\n", name, tok->dest);
+            return;
+        }
+    	
 	
-	/* put it in queue to handle delays, and then let
-	 * our thread handle it when the delay comes up */
-	enqueue(rte->ackq, tok->orig);
+	    /* put it in queue to handle delays, and then let
+	    * our thread handle it when the delay comes up */
+	    enqueue(wl->ackq, tok->orig);
         //sendudp(name, tok->orig, tok->dest);
         
         return;
@@ -453,7 +465,7 @@ void handlenack(char *name, struct msgtok *tok)
     printf("Received a nack: [#%d]:[%s]-[%s]\n-----------\n",
 	    tok->acknum, tok->dest, tok->src);
     
-    struct routing_table_entry *ql = getroutingtableentry(getnodefromname(tok->dest), tok->src);
+    struct windowlist *ql = getwindowlist(getnodefromname(name), tok->src);
     
     if(ql == NULL)
 	    return;
@@ -492,14 +504,14 @@ void handlemsg(char *name, struct msgtok *tok)
     {
 	    printf("Forwarding message!\n");
         /* i am not the destination so forward it towards the
-         real destination. the msg will still contain the original
-         sender, so we won't modify the message */
-	struct routing_table_entry *rte;
-	rte = getroutingtableentry(getnodefromname(name), tok->dest);
+        real destination. the msg will still contain the original
+        sender, so we won't modify the message */
+        struct windowlist* wl;
+        wl = getwindowlist(getnodefromname(name), tok->dest);
 	
-	/* put it in queue to handle delays, and then let
-	 * our thread handle it when the delay comes up */
-	enqueue(rte->ackq, tok->orig);
+	    /* put it in queue to handle delays, and then let
+	    * our thread handle it when the delay comes up */
+        enqueue(wl->ackq, tok->orig);
         //sendudp(name, tok->orig, tok->dest);
         
         return;
@@ -513,7 +525,7 @@ void handlemsg(char *name, struct msgtok *tok)
     
     /* reverse dest and src because we are receiving from them so
      we want my buffer */
-    struct routing_table_entry *ql = getroutingtableentry(getnodefromname(tok->dest), tok->src);
+    struct windowlist *ql = getwindowlist(getnodefromname(tok->dest), tok->src);
     
     if(ql == NULL)
 	    return;
@@ -545,7 +557,7 @@ void handlemsg(char *name, struct msgtok *tok)
             sendnacks(q, tok);
         
         /* and clear the queue */
-	clearwindow(ql, enumrealmsg);
+	    clearwindow(ql, enumrealmsg);
     }
     
     return;

@@ -44,11 +44,22 @@ FILE* createlogfile(char* nodename)
     return to_return;
 }
 
-void log_routing_table(struct node* a, int timestep)
+void log_routing_table(struct node* a, int timestep, int resetstep)
 {
+    if (a == NULL) {
+        fprintf(stderr, "ERROR: log routing table got null node\n");
+        return;
+    }
     FILE* logfile = a->logfile;
+    if (logfile == NULL) {
+        fprintf(stderr, "ERROR: log routing table got node [%s] with null fd\n", a->name);
+        return;
+    }
     struct routing_table_entry* rte = a->routing_table;
-    fprintf(logfile, "=====================\n%s Routing Table At Timestep %d\n", a->name, timestep);
+    if (resetstep)
+        fprintf(logfile, "=====================\n%s RESET Routing Table At Timestep %d\n", a->name, timestep);
+    else
+        fprintf(logfile, "=====================\n%s Routing Table At Timestep %d\n", a->name, timestep);
     fprintf(logfile, "dest\tnexthop\tweight\n");
 
     while (rte != NULL)

@@ -36,7 +36,7 @@ void parse_file(char* filename) {
         strcpy(nodebname, temp);
 	
 		temp = strtok(NULL, "\n");
-	drop = atoi(temp);
+	    drop = atoi(temp);
 	
 		//printf("node-delay-node-drop: %s-%d-%s-%d\n",
 		//       nodeaname, delay, nodebname, drop);

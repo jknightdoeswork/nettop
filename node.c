@@ -55,11 +55,6 @@ void freeroutingtableentry(struct routing_table_entry *rte)
     rte->next = NULL;
     rte->prev = NULL;
     
-    /* call other function to go deeper to free each window */
-    freewindow(rte->sendq);
-    freewindow(rte->recvq);
-    freewindow(rte->ackq);
-    
     free(rte);
     rte = NULL;
     
@@ -163,31 +158,70 @@ struct node *addnode(char* name)
     return n;
 }
 
-/* given a node, and a name for our destination entry, add
- an RTE for the destination so our node knows about it */
-struct routing_table_entry *rtappend(struct node *w, char* name,
-		char* through, int delay, int drop, float weight)
+/** window list manipulation **/
+struct windowlist* getwindowlist(struct node* w, char* name)
 {
-    struct routing_table_entry *tmp;
-    struct routing_table_entry *new;
-    
-    tmp = w->routing_table;
-    
-    /* construct the rt entry */    
-    new = malloc(sizeof(struct routing_table_entry));
-    new->name = malloc(BUFSIZE * sizeof(char));
-    memset(new->name, 0, BUFSIZE);
-    new->through = malloc(BUFSIZE * sizeof(char));
-    memset(new->through, 0, BUFSIZE);
-    new->delay = delay;
-    new->drop = drop;
-    new->weight = weight;
-    strcpy(new->name, name);
-    strcpy(new->through, through);
+    if (w == NULL) {
+        fprintf(stderr, "createwindowlist got null w\n");
+        return NULL;
+    }
+    if (name == NULL) {
+        fprintf(stderr, "createwindowlist got null name\n");
+        return NULL;
+    }
 
+    // if w->window list has an entry for name in it return
+    struct windowlist* tmp = w->windows;
+    while(tmp != NULL)
+    {
+        if (strcmp(tmp->name, name) == 0)
+            return tmp;
+        tmp = tmp->next;
+    }
+    return NULL;
+}
+
+void freewindowlist(struct windowlist* w)
+{
+    freewindow(w->sendq);
+    freewindow(w->recvq);
+    freewindow(w->ackq);
+    free(w->name);
+    free(w);
+}
+
+void createwindowlist(struct node* w, char* name)
+{
+    if (w == NULL) {
+        fprintf(stderr, "createwindowlist got null w\n");
+        return;
+    }
+    if (name == NULL) {
+        fprintf(stderr, "createwindowlist got null name\n");
+        return;
+    }
+
+    // if w->window list has an entry for name in it return
+    struct windowlist* tmp = w->windows;
+    while(tmp != NULL)
+    {
+        if (strcmp(tmp->name, name) == 0)
+            return;
+        if (tmp->next == NULL)
+            break;
+        tmp = tmp->next;
+    }
+    
+    // else create a w->windowlist entry for name 
+
+    struct windowlist *new = malloc(sizeof(struct windowlist));
+    memset(new, 0, sizeof(struct windowlist));
+    new->name = malloc(BUFSIZE * sizeof(char));
+    memset(new->name, 0, BUFSIZE * sizeof(char));
+    strcpy(new->name, name);
     new->sendq = malloc(sizeof(struct window));
     new->recvq = malloc(sizeof(struct window));
-    new->ackq = malloc(sizeof(struct window));
+    new->ackq  = malloc(sizeof(struct window));
     
     /* initialize the queues */
     new->sendq->head = NULL;
@@ -214,12 +248,52 @@ struct routing_table_entry *rtappend(struct node *w, char* name,
     new->ackq->last = INT_MAX;
     new->ackq->cur = 0;
     
+    if (tmp == NULL) // window list is empty
+    {
+        w->windows = new;
+    }
+    else
+    {
+        tmp->next = new;
+        new->prev = tmp;
+    }
+}
+
+// TODO CONSIDER REFACTORING
+/* given a node, and a name for our destination entry, add
+ an RTE for the destination so our node knows about it */
+struct routing_table_entry *rtappend(struct node *w, char* name,
+		char* through, int delay, int drop, float weight, int neighbourtable)
+{
+    struct routing_table_entry *tmp;
+    struct routing_table_entry *new;
+    
+    tmp = neighbourtable ? w->connected_edges : w->routing_table;
+    
+    /* construct the rt entry */    
+    new = malloc(sizeof(struct routing_table_entry));
+    new->name = malloc(BUFSIZE * sizeof(char));
+    memset(new->name, 0, BUFSIZE);
+    new->through = malloc(BUFSIZE * sizeof(char));
+    memset(new->through, 0, BUFSIZE);
+    new->delay = delay;
+    new->drop = drop;
+    new->weight = weight;
+    strcpy(new->name, name);
+    strcpy(new->through, through);
+
+    /* create the window list */
+    if (getwindowlist(w, name) == NULL)
+        createwindowlist(w, name);
+        
     /* do the linked list insertion */
     new->next = NULL;
     if(tmp == NULL) /* no entries */
     {
-        w->routing_table = new;
-            
+        if (neighbourtable)
+            w->connected_edges = new;
+        else
+            w->routing_table = new;
         new->prev = NULL;
     }
     else
@@ -254,7 +328,6 @@ void addedge(char* nodeaname, char* nodebname, int delay, int drop)
     float weight = (100.0/(100.0-drop))*delay;
     struct node* nodea = getnodefromname(nodeaname);
     struct node* nodeb = getnodefromname(nodebname);
-    time_t curtime = time(NULL);
     
     /* if either don't exist, do not proceed */
     if(nodea == NULL)
@@ -267,12 +340,15 @@ void addedge(char* nodeaname, char* nodebname, int delay, int drop)
         printf("[%s]Node does not exist\n", nodebname);
         return;
     }
-    
+
+    fprintf(stderr, "node a: %s.\n", nodea->name);
+    fprintf(stderr, "node b: %s.\n", nodeb->name);
+
     /* only proceed if both nodes exist */
-    rtappend(nodea, nodebname, nodebname, delay, drop, weight);
-    log_routing_table(nodea, curtime);
-    rtappend(nodeb, nodeaname, nodeaname, delay, drop, weight);
-    log_routing_table(nodeb, curtime);
+    rtappend(nodea, nodebname, nodebname, delay, drop, weight, 1);
+    rtappend(nodeb, nodeaname, nodeaname, delay, drop, weight, 1);
+    reset_dvr(nodea);
+    reset_dvr(nodeb);
 }
 
 /* given our (global) list of nodes, append a new node */
@@ -299,6 +375,9 @@ struct node *append(struct list *l, char* name)
         exit(1);
     }
     w->routing_table = NULL;
+    w->connected_edges = NULL;
+    w->windows = NULL;
+
     w->name = malloc(BUFSIZE * sizeof(char));
     memset(w->name, 0, BUFSIZE);
     strcpy(w->name, name);
@@ -320,7 +399,6 @@ struct node *append(struct list *l, char* name)
     getaddr(w); /* port to make sense */
 
     spawnthread(w);
-    
     return w;
 }
 
@@ -366,7 +444,7 @@ void printwindow(struct window *q)
 
 /* print out all nodes in a list, as well as all RTE's
  for each node */
-void printlist(struct list *l)
+/*void printlist(struct list *l)
 {
     if(l == NULL)
         return;
@@ -398,7 +476,7 @@ void printlist(struct list *l)
     }
     
     return;
-}
+}*/
 
 /* returns true if a comes before b in the sliding window */
 int comesfirst(int first, int a, int b)
@@ -695,13 +773,19 @@ void sendudp(char *src, char *msg, char *dest)
      send to intermediate node */
     struct routing_table_entry *rte, *r;
     rte = getroutingtableentry(getnodefromname(src), dest);
+
+    if (rte == NULL) {
+        fprintf(stderr, "msg: %s\n", msg);
+        fprintf(stderr, "Error, no connection from [%s] to [%s] found!\n", src, dest);
+        return;
+    }
     
     /* get the node we go through */
     r = getroutingtableentry(getnodefromname(src), rte->through);
     
     if(rte == NULL || r == NULL)
     {
-        fprintf(stderr, "Error, no connection to [%s] found!\n", dest);
+        fprintf(stderr, "Error, no connection from [%s] to [%s] found!\n", src, dest);
         return;
     }
     
@@ -744,15 +828,16 @@ struct routing_table_entry *getroutingtableentry(struct node *src, char *dest)
  and messages not meant for us). if it's delay is up, send it
  and forget about it since i am not responsible for reliable
  delivery (handled elsewhere) */
-void checkackdelays(struct node *n, struct routing_table_entry *rte)
+void checkackdelays(struct node *n, struct windowlist *wl)
 {
-    if(rte == NULL)
+    struct routing_table_entry *rte = getroutingtableentry(n, wl->name);
+	if(rte == NULL)
 		return;
 
 	time_t curtime = time(NULL);
 
     /* get appropriate entries */
-	struct window *w = rte->ackq;
+	struct window *w = wl->ackq;
     
     if(w == NULL)
     {
@@ -785,15 +870,22 @@ void checkackdelays(struct node *n, struct routing_table_entry *rte)
 
 /* check if messages need to be sent from delay, or have timed out.
  either way it needs to be sent */
-void checkmsgdelays(struct node *n, struct routing_table_entry *rte)
+void checkmsgdelays(struct node *n, struct windowlist* wl)
 {
+    if (wl == NULL)
+    {
+        fprintf(stderr, "checkmsgdelays got null windowlist\n");
+        return;
+    }
+    
+    struct routing_table_entry *rte = getroutingtableentry(n, wl->name);
 	if(rte == NULL)
 		return;
 
 	time_t curtime = time(NULL);
 
     /* get appropriate entries */
-	struct window *w = rte->sendq;
+	struct window *w = wl->sendq;
     
     if(w == NULL)
     {
@@ -847,15 +939,15 @@ void checkmsgdelays(struct node *n, struct routing_table_entry *rte)
  * or if they should be sent based off of the ack timing out (no confirmation) */
 void checktimeouts(struct node *n)
 {
-	struct routing_table_entry *rte = n->routing_table;
+	struct windowlist *wl = n->windows;
 	
 	/* check all RTEs for outstanding packets, either delay, or timeout */
-	while(rte != NULL)
+	while(wl != NULL)
 	{
-		checkmsgdelays(n, rte);
-		checkackdelays(n, rte);
+		checkmsgdelays(n, wl);
+		checkackdelays(n, wl);
 
-		rte = rte->next;
+		wl = wl->next;
 	}
 	
 	return;
@@ -868,6 +960,7 @@ void *threadloop(void *arg)
 	
 	struct node *me = getnodefromname(name);
 	time_t laststep = -1;
+    time_t lastdvrreset = -1;
 	
 	if(me == NULL)
 	{
@@ -879,6 +972,7 @@ void *threadloop(void *arg)
 	while(!me->dead)
 	{
 		laststep = dvr_step(me, laststep);
+        lastdvrreset = dvr_reset_step(me, lastdvrreset);
 		checktimeouts(me);
 		receivemsg(me->name);
 	}
@@ -966,10 +1060,18 @@ void usersendmessage()
      no connection exists so we can't send a message */
     struct routing_table_entry *rte;
     rte = getroutingtableentry(nsrc, dest);
+    struct windowlist *wl = NULL;
+    wl = getwindowlist(nsrc, dest);
     
+    if (wl == NULL)
+    {
+        fprintf(stderr, "ERROR:[%s]-[%s]No window list between nodes exists\n", src, dest);
+        return;
+    }
+
     if(rte == NULL)
     {
-        printf("[%s]-[%s]No path between nodes exists\n", src, dest);
+        printf("[%s]-[%s]No path between nodes exists\n. (Routing table could still be building)\n", src, dest);
         return;
     }
     
@@ -980,12 +1082,12 @@ void usersendmessage()
     strtok_r(msg, "\n", &saveptr);
 	
     /* ship off 3 versions */
-	sprintf(send, "%d`%s`%s`%s", reqack(rte->sendq), src, dest, msg);
-	enqueue(rte->sendq, send);
-    sprintf(send, "%d`%s`%s`%s", reqack(rte->sendq), src, dest, msg);
-	enqueue(rte->sendq, send);
-    sprintf(send, "%d`%s`%s`%s", reqack(rte->sendq), src, dest, msg);
-	enqueue(rte->sendq, send);
+	sprintf(send, "%d`%s`%s`%s", reqack(wl->sendq), src, dest, msg);
+	enqueue(wl->sendq, send);
+    sprintf(send, "%d`%s`%s`%s", reqack(wl->sendq), src, dest, msg);
+	enqueue(wl->sendq, send);
+    sprintf(send, "%d`%s`%s`%s", reqack(wl->sendq), src, dest, msg);
+	enqueue(wl->sendq, send);
 }
 
 /* prompt the user input to add a node to the topology */
@@ -1164,7 +1266,8 @@ void userloop()
 				//usermodedge();
 				break;
 			case '6':
-				printlist(nodelist);
+                // TODO
+                printf("not implemented yet\n");
 				break;
 			default:
 				break;
@@ -1183,7 +1286,7 @@ int main()
     
     file = fopen("readoutput", "w");
     parse_file("test.top");
-    
+        
     userloop();
     
     fclose(file);

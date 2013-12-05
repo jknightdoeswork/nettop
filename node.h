@@ -87,12 +87,19 @@ struct window
     int cur;
 };
 
+struct windowlist
+{
+    struct window *sendq, *recvq;
+    struct window *ackq;
+    char* name;
+
+    struct windowlist *next, *prev;
+};
+
 
 /* holds a list of send and receive queues for every other node */
 struct routing_table_entry
 {
-    struct window *sendq, *recvq;
-    struct window *ackq;
     char* name;
     char* through;
     //planning
@@ -109,6 +116,10 @@ struct routing_table_entry
 struct node
 {
     struct routing_table_entry *routing_table;
+    struct routing_table_entry *connected_edges;
+
+    struct windowlist *windows;
+
     char* name;
     int port, socket;
     
@@ -142,7 +153,7 @@ enum globalenums
 
 /* for node.c */
 struct routing_table_entry *rtappend(struct node *w, char* name,
-		char* through, int delay, int drop, float weight);
+		char* through, int delay, int drop, float weight, int neighbourtable);
 struct node *append(struct list *l, char* name);
 void printwindow(struct window *q);
 int enqueue(struct window *q, char* msg);
@@ -165,7 +176,10 @@ void sigkillthread(char* name);
 void sigkillall();
 void *mainloop(void *arg);
 void freepacket(struct packet* p);
-
+void freewindowlist(struct windowlist* w);
+void freeroutingtableentry(struct routing_table_entry *rte);
+void createwindowlist(struct node* w, char* name);
+struct windowlist* getwindowlist(struct node* w, char* name);
 struct routing_table_entry *getroutingtableentry(struct node *src, char *dest);
 
 
@@ -221,6 +235,11 @@ void send_dvr_message(struct node* src, char* dest);
  */
 void handledvrmessage(struct node* nodea, struct msgtok* msg);
 
+time_t dvr_reset_step(struct node* a, time_t lastresetstep);
+void set_dvr_reset_interval(int seconds);
+void reset_dvr(struct node* a);
+
+
 /* for log.c */
 /* createlogfile
  * creates the log file for the node at logs/timestamp/nodename
@@ -231,5 +250,5 @@ FILE* createlogfile(char* nodename);
  * creates the directory logs/timestamp
  */
 void createlogdir();
-void log_routing_table(struct node* a, int timestep);
+void log_routing_table(struct node* a, int timestep, int resetstep);
 #endif

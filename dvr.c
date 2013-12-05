@@ -4,12 +4,54 @@
 #include <stdlib.h>
 
 #define msgformat "&%s`%s`%f`" //&me`dest`distance`
-int dvr_interval = 2;
+int dvr_interval = 1;
+int dvr_reset_interval = 10;
+
 int is_neighbour(struct routing_table_entry* rte);
+
+void clear_dvr(struct node* a)
+{
+    struct routing_table_entry *rte = a->routing_table;
+    struct routing_table_entry *tmp;
+    while(rte != NULL)
+    {
+        tmp = rte;
+        rte = rte->next;
+        freeroutingtableentry(tmp);
+    }
+    a->routing_table = NULL;
+}
+
+void reset_dvr(struct node* a)
+{
+    struct routing_table_entry *rte = a->connected_edges;
+    while(rte != NULL)
+    {
+        rtappend(a, rte->name, rte->through, rte->delay, rte->drop, rte->weight, 0);
+        rte = rte->next;
+    }
+    rtappend(a, a->name, a->name, 0, 0, 0, 0);
+}
 
 void set_interval(int seconds)
 {
     dvr_interval = seconds;
+}
+
+void set_dvr_reset_interval(int seconds)
+{
+    dvr_reset_interval = seconds;
+}
+
+time_t dvr_reset_step(struct node* a, time_t lastresetstep)
+{
+    time_t curtime = time(NULL);
+    if (lastresetstep != -1 && difftime(curtime, lastresetstep) < dvr_interval)
+        return lastresetstep;
+    clear_dvr(a);
+    reset_dvr(a);
+    log_routing_table(a, curtime, 1);
+    return curtime;
 }
 
 time_t dvr_step(struct node* a, time_t laststep)
@@ -20,16 +62,14 @@ time_t dvr_step(struct node* a, time_t laststep)
     
     
     // send my datas to all neighbours
-    struct routing_table_entry *rte = a->routing_table;
+    struct routing_table_entry *rte = a->connected_edges;
     
     while (rte != NULL)
     {
-        if (is_neighbour(rte))
-        {
-            send_dvr_message(a, rte->name);
-        }
+        send_dvr_message(a, rte->name);
         rte = rte->next;
     }
+
     return curtime;
 }
 
@@ -78,7 +118,7 @@ void handledvrmessage(struct node* nodea, struct msgtok* msg)
     acrte = getroutingtableentry(nodea, nodecname);
     if (acrte == NULL)
     {
-        rtappend(nodea, nodecname, nodebname, 0, 0, abcweight);
+        rtappend(nodea, nodecname, nodebname, 0, 0, abcweight, 0);
         routingtablechanged = 1;
     }
     else if (acrte->weight > abcweight) 
@@ -89,7 +129,7 @@ void handledvrmessage(struct node* nodea, struct msgtok* msg)
     }
 
     if (routingtablechanged)
-        log_routing_table(nodea, curtime);
+        log_routing_table(nodea, curtime, 0);
 }
 
 int is_neighbour(struct routing_table_entry* rte)
