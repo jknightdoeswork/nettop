@@ -931,8 +931,8 @@ void checkmsgdelays(struct node *n, struct windowlist* wl)
 				/* only mark it as having been enqueued just now
 				 * and say it hasn't been sent before so it knows
 				 * to check for it's delay */
-				fprintf(n->srlog, "[#%d : %s]Packet timed out\n", tok->acknum, tok->pay);
-				printf("[#%d : %s]Packet timed out...\n", tok->acknum, tok->pay);
+				fprintf(n->srlog, "[%s]Packet [#%d : %s] timed out\n", n->name, tok->acknum, tok->pay);
+				printf("[%s]Packet [#%d : %s] timed out...\n", n->name, tok->acknum, tok->pay);
 
 				p->enqT = curtime;
 				p->sent = 0;
@@ -943,8 +943,8 @@ void checkmsgdelays(struct node *n, struct windowlist* wl)
 			if(p->enqT < curtime - r->delay && !p->received)
 			{
 				/* send the packet because it's delay is up */
-				fprintf(n->srlog, "[#%d : %s]Packet is now in the network\n", tok->acknum, tok->pay);
-				printf("[#%d : %s]Packet is now in the network\n", tok->acknum, tok->pay);
+				fprintf(n->srlog, "[%s]Packet [#%d : %s] is now in the network\n", n->name, tok->acknum, tok->pay);
+				printf("[%s]Packet [#%d : %s] is now in the network\n", n->name, tok->acknum, tok->pay);
 
 				p->enqT = curtime;
 				p->sent = 1;
@@ -1328,6 +1328,56 @@ void parsesendmessage(char *msg)
     return;
 }
 
+/* wait for everything in the network to finish up and be dequeued before proceeding with
+ * input */
+void syncwait()
+{
+	struct node *n;
+	struct windowlist *w;
+
+	int keepgoing = 1;
+
+	printf("Waiting...\n");
+	/* wait until everybodies queues are emptied before proceeding */
+	while(keepgoing)
+	{
+		/* set keepgoing to false, and if any queues are non-empty, put keepgoing
+		 * back to true */
+		keepgoing = 0;
+		usleep(200000);
+		
+		n = nodelist->head;
+
+		/* keepgoing will be false, and will be set to true the first time we see
+		 * a non-empty queue, if we see that, no need to continue looking, we
+		 * have to wait regardless */
+		while(n != NULL && !keepgoing)
+		{
+			w = n->windows;
+
+			while(w != NULL && !keepgoing)
+			{
+				/* check if any queues have packets in them */
+				if((w->ackq != NULL && w->ackq->sz > 0)
+				|| (w->sendq != NULL && w->sendq->sz > 0)
+				|| (w->recvq != NULL && w->recvq->sz > 0))
+				{
+					keepgoing = 1;
+					break;
+				}
+
+				w = w->next;
+			}
+
+			n = n->next;
+		}
+	}
+	
+	printf("Done waiting\n");
+
+	return;
+}
+
 /* function formats. Use addedge to modify existing edges as well
  
  +s`A`B`Message         -send message from A to B
@@ -1337,7 +1387,8 @@ void parsesendmessage(char *msg)
  -e`A`B                 -remove edge between A and B from topology
  print`A
  printall
- 
+ wait
+
  */
 
 /* parse the first two characters to see what time of command
@@ -1416,6 +1467,10 @@ void determinetype(char *filename)
             {
                 parseprint(remainder);
             }
+			else if(strcmp("wa", two) == 0)
+			{
+				syncwait();
+			}
             else if(strcmp("ex", two) == 0 || strcmp("qu", two) == 0)
             {
                 return;

@@ -76,7 +76,7 @@ struct window
 	int max;
 	int first;
 	int last;
-    int cur;
+  	int cur;
 };
 
 struct windowlist
