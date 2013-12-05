@@ -18,7 +18,7 @@ time_t dvr_step(struct node* a, time_t laststep)
     if (laststep != -1 && difftime(curtime, laststep) < dvr_interval)
         return laststep;
     
-    log_routing_table(a, curtime);
+    
     // send my datas to all neighbours
     struct routing_table_entry *rte = a->routing_table;
     
@@ -59,8 +59,10 @@ void handledvrmessage(struct node* nodea, struct msgtok* msg)
     int bcweight = atoi(msg->pay);
     int abweight;
     int abcweight;
+    int routingtablechanged = 0;
     struct routing_table_entry* abrte;
     struct routing_table_entry* acrte;
+    time_t curtime = time(NULL);
     
     // find distance between a, b
     abrte = getroutingtableentry(nodea, nodebname);
@@ -76,14 +78,18 @@ void handledvrmessage(struct node* nodea, struct msgtok* msg)
     acrte = getroutingtableentry(nodea, nodecname);
     if (acrte == NULL)
     {
-        // no existing entry
         rtappend(nodea, nodecname, nodebname, 0, 0, abcweight);
+        routingtablechanged = 1;
     }
     else if (acrte->weight > abcweight) 
     {
 	    acrte->weight = abcweight;
 	    strcpy(acrte->through, nodebname);
+        routingtablechanged = 1;
     }
+
+    if (routingtablechanged)
+        log_routing_table(nodea, curtime);
 }
 
 int is_neighbour(struct routing_table_entry* rte)

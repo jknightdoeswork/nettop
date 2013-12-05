@@ -254,6 +254,7 @@ void addedge(char* nodeaname, char* nodebname, int delay, int drop)
     float weight = (100.0/(100.0-drop))*delay;
     struct node* nodea = getnodefromname(nodeaname);
     struct node* nodeb = getnodefromname(nodebname);
+    time_t curtime = time(NULL);
     
     /* if either don't exist, do not proceed */
     if(nodea == NULL)
@@ -269,7 +270,9 @@ void addedge(char* nodeaname, char* nodebname, int delay, int drop)
     
     /* only proceed if both nodes exist */
     rtappend(nodea, nodebname, nodebname, delay, drop, weight);
+    log_routing_table(nodea, curtime);
     rtappend(nodeb, nodeaname, nodeaname, delay, drop, weight);
+    log_routing_table(nodeb, curtime);
 }
 
 /* given our (global) list of nodes, append a new node */
