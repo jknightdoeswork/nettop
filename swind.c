@@ -1,7 +1,3 @@
-//
-//  swind.c
-//  
-
 #include "node.h"
 
 /* increment the sliding window range for a given window */
@@ -117,6 +113,8 @@ void clearwindow(struct windowlist *wl, int type)
     
     while(el != NULL)
     {
+	struct msgtok *tok = tokenmsg(el->msg);
+
         /* check if in order */
         if(el->acknum == q->first && (el->received || type == enumrealmsg))
         {
@@ -135,20 +133,26 @@ void clearwindow(struct windowlist *wl, int type)
                  order */
                 struct packet *el = dequeue(q);
                 
-                printf("Msg [%s] is now next in order and being ", el->msg);
-                printf("dequeued from my receive buffer\n");
+                printf("[%s]Msg [#%d : %s] is now in order and being handled\n", tok->dest, tok->acknum, tok->pay);
+				struct node *n = getnodefromname(tok->dest);
+                fprintf(n->srlog, "Msg [#%d : %s] is now in order and being handled\n",
+					tok->acknum, tok->pay);
                 
                 /* free the memory we were using */
                 freepacket(el);
             }
             
             
+	    freetok(tok);
             /* set it to the new head to see if it also should be
              dequeued */
             el = q->head;
         }
         else
+	{
+	    freetok(tok);
             break;
+	}
     }
     
     return;
@@ -309,7 +313,6 @@ void sendbackack(struct msgtok *tok)
     /* enqueue it to my delay queue so it waits
      the appropriate length of time before being sent */
     enqueue(wl->ackq, ackmsg);
-    //sendudp(tok->dest, ackmsg, tok->src);
     
     return;
 }
@@ -332,7 +335,6 @@ void sendbacknack(struct msgtok *tok, int out)
     /* enqueue it to my delay queue so it waits
      the appropriate length of time before being sent */
     enqueue(wl->ackq, nackmsg);
-    //sendudp(tok->dest, nackmsg, tok->src);
     
     return;
 }
@@ -369,10 +371,15 @@ void sendnacks(struct window *q, struct msgtok *tok)
  as having been successfully received) */
 void handleack(char *name, struct msgtok *tok)
 {
+	struct node *n = getnodefromname(name);
+	if(n == NULL)
+			return;
+
     /* forward it if it isn't intended for me */
     if(!iamdest(name, tok))
     {
-	    printf("Forwarding ack!\n");
+	    fprintf(n->srlog, "Forwarding ack [#%d] between [%s]-[%s]\n",
+						tok->acknum, tok->src, tok->dest);
         /* i am not the destination so forward it towards the
          real destination. the msg will still contain the original
          sender, so we won't modify the message */
@@ -382,14 +389,15 @@ void handleack(char *name, struct msgtok *tok)
 	    /* put it in queue to handle delays, and then let
 	    * our thread handle it when the delay comes up */
 	    enqueue(wl->ackq, tok->orig);
-        //sendudp(name, tok->orig, tok->dest);
         
         return;
     }
     
     /* I just received a pure ack confirming a message I sent */
-    printf("Received an ack: [#%d]:[%s]-[%s]\n-----------\n",
-	    tok->acknum, tok->dest, tok->src);
+    printf("Received an ack [#%d] from [%s]\n",
+	    tok->acknum, tok->src);
+	fprintf(n->srlog, "Received an ack [#%d] from [%s]\n",
+					tok->acknum, tok->src);
     
     /* the source of the message is the "dest" of my queue */
     struct windowlist *dwl = getwindowlist(getnodefromname(name), tok->src);
@@ -421,7 +429,7 @@ void handleack(char *name, struct msgtok *tok)
     
     if(el == NULL)
     {
-	    printf("Received duplicate ack!\n");
+	    fprintf(n->srlog, "Duplicate ack detected!\n");
 	    // duplicate acks are okay if we blindly re-send, but
 	    // they did actually receive it ie if timeouts are small
 	    // and it 'timed out' but is still in the network
@@ -436,11 +444,16 @@ void handleack(char *name, struct msgtok *tok)
  lost or delayed) */
 void handlenack(char *name, struct msgtok *tok)
 {
+	struct node *n = getnodefromname(name);
+	if(n == NULL)
+			return;
+
     /* forward it if it isn't intended for me, delays were calculated
      by the main node */
     if(!iamdest(name, tok))
     {
-	    printf("Forwarding nack\n");
+	    fprintf(n->srlog, "Forwarding nack [#%d] between [%s]-[%s]\n",
+			tok->acknum, tok->src, tok->dest);
         /* i am not the destination so forward it towards the
          real destination. the msg will still contain the original
          sender, so we won't modify the message */
@@ -462,8 +475,8 @@ void handlenack(char *name, struct msgtok *tok)
         return;
     }
     
-    printf("Received a nack: [#%d]:[%s]-[%s]\n-----------\n",
-	    tok->acknum, tok->dest, tok->src);
+	fprintf(n->srlog, "Received a nack [#%d] from [%s]\n",
+					tok->acknum, tok->src);
     
     struct windowlist *ql = getwindowlist(getnodefromname(name), tok->src);
     
@@ -499,10 +512,15 @@ void handlenack(char *name, struct msgtok *tok)
  saying that I've successfully received the message */
 void handlemsg(char *name, struct msgtok *tok)
 {
+	struct node *n = getnodefromname(name);
+	if(n == NULL)
+			return;
+
     /* delays were calculated by the main node */
     if(!iamdest(name, tok))
     {
-	    printf("Forwarding message!\n");
+	    fprintf(n->srlog, "Forwarding message [#%d : %s] between [%s]-[%s]\n",
+			tok->acknum, tok->pay, tok->src, tok->dest);
         /* i am not the destination so forward it towards the
         real destination. the msg will still contain the original
         sender, so we won't modify the message */
@@ -517,9 +535,11 @@ void handlemsg(char *name, struct msgtok *tok)
         return;
     }
     
-    printf("[%s]Received a message:\n[#%d][%s]-[%s]\n%s-----------\n",
-           name, tok->acknum, tok->src, tok->dest, tok->pay);
+    printf("[%s]Received a message from [%s] - [#%d][%s]\n",
+           name, tok->src, tok->acknum, tok->pay);
     
+    fprintf(n->srlog, "Received a message from [%s] - [#%d][%s]\n",
+           tok->src, tok->acknum, tok->pay);
     /* if we get here then I was the intended recipient so handle
      it properly */
     

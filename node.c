@@ -1,10 +1,3 @@
-//
-//  node.c
-//  
-// TODO : FIX A BETTER UI BUT SELECTIVE REPEAT SEEMS ALRIGHT
-// NO REAL WAY TO TEST GIVEN WITH THE CURR UI YOU CAN'T
-// REALLY SEND MULTIPLE MESSAGES
-
 #include "node.h"
 
 struct list *nodelist;
@@ -152,7 +145,6 @@ struct node *addnode(char* name)
     /* append handles it all because append is magic */
     
     struct node *n = append(nodelist, name);
-    fprintf(stderr, "spawning thread\n");
     
     return n;
 }
@@ -301,7 +293,9 @@ struct routing_table_entry *rtappend(struct node *w, char* name,
         {
             if(strcmp(tmp->name, name) == 0)
             {
-                fprintf(stderr, "RTE already exists for node: %s\n", name);
+				/* suppress this output because it is perfectly acceptable
+				 * to already exist, but can be useful for debugging */
+                /*fprintf(stderr, "RTE already exists for node: %s\n", name);*/
                 return NULL;
             }
             
@@ -340,9 +334,6 @@ void addedge(char* nodeaname, char* nodebname, int delay, int drop)
         return;
     }
 
-    fprintf(stderr, "node a: %s.\n", nodea->name);
-    fprintf(stderr, "node b: %s.\n", nodeb->name);
-
     /* only proceed if both nodes exist */
     rtappend(nodea, nodebname, nodebname, delay, drop, weight, 1);
     rtappend(nodeb, nodeaname, nodeaname, delay, drop, weight, 1);
@@ -354,6 +345,7 @@ void addedge(char* nodeaname, char* nodebname, int delay, int drop)
 /* todo-remove it from handling RTE's */
 struct node *append(struct list *l, char* name)
 {
+	char lognames[BUFSIZE];
     /* fail if l is null */
     if(l == NULL)
     {
@@ -383,7 +375,14 @@ struct node *append(struct list *l, char* name)
     w->port = globalport++;
     w->next = NULL;
     w->dead=0;
-    w->logfile = createlogfile(name);
+
+	memset(lognames, 0, sizeof(lognames));
+	sprintf(lognames, "%s-dvr.log", name);
+    w->logfile = createlogfile(lognames);
+
+	memset(lognames, 0, sizeof(lognames));
+	sprintf(lognames, "%s-sr.log", name);
+    w->srlog = createlogfile(lognames);
     
     if(l->tail != NULL)
         l->tail->next = w;
@@ -762,6 +761,7 @@ void initialize()
     nodelist = malloc(sizeof(struct list));
     if (nodelist == NULL) {
         fprintf(stderr, "OUT OF MEMORY\n");
+		exit(1);
     }
     memset(nodelist, 0, sizeof(struct list));
     srand(time(NULL));
@@ -772,16 +772,27 @@ void initialize()
 /* send (or try to send) a packet to a destination */
 void sendudp(char *src, char *msg, char *dest)
 {
+	struct node *n = getnodefromname(src);
+
+	if(n == NULL)
+	{
+		fprintf(stderr, "Source node no longer exists\n");
+		return;
+	}
+
     int sock = getsockfromname(src);
     
     /* get the entry for what node it goes through and
      send to intermediate node */
     struct routing_table_entry *rte, *r;
-    rte = getroutingtableentry(getnodefromname(src), dest);
+    rte = getroutingtableentry(n, dest);
+
+	struct msgtok *tok = tokenmsg(msg);
 
     if (rte == NULL) {
-        fprintf(stderr, "msg: %s\n", msg);
-        fprintf(stderr, "Error, no connection from [%s] to [%s] found!\n", src, dest);
+        fprintf(n->srlog, "Error, no connection from [%s] to [%s] found for message [%d : %s]!\n",
+				src, dest, tok->acknum, tok->pay);
+		freetok(tok);
         return;
     }
     
@@ -790,7 +801,9 @@ void sendudp(char *src, char *msg, char *dest)
     
     if(rte == NULL || r == NULL)
     {
-        fprintf(stderr, "Error, no connection from [%s] to [%s] found!\n", src, dest);
+        fprintf(n->srlog, "Error, no connection from [%s] to [%s] found for message [%d : %s]!\n",
+				src, dest, tok->acknum, tok->pay);
+		freetok(tok);
         return;
     }
     
@@ -807,9 +820,11 @@ void sendudp(char *src, char *msg, char *dest)
     else
     {
 	    if(msg[0] != '&')
-		printf("Dropping message [%s]\n", msg);
+		fprintf(n->srlog, "[%s]Dropping message [%d : %s] on it's way from [%s] to [%s]\n",
+			   src, tok->acknum, tok->pay, tok->src, tok->dest);
     }
     
+	freetok(tok);
     return;
 }
 
@@ -879,7 +894,7 @@ void checkmsgdelays(struct node *n, struct windowlist* wl)
 {
     if (wl == NULL)
     {
-        fprintf(stderr, "checkmsgdelays got null windowlist\n");
+        fprintf(n->srlog, "Windowlist was null when checking for message delays\n");
         return;
     }
     
@@ -906,6 +921,8 @@ void checkmsgdelays(struct node *n, struct windowlist* wl)
 
 	while(p != NULL)
 	{
+		struct msgtok *tok = tokenmsg(p->msg);
+
 		if(p->sent)
 		{
 			/* check timeouts */
@@ -914,7 +931,8 @@ void checkmsgdelays(struct node *n, struct windowlist* wl)
 				/* only mark it as having been enqueued just now
 				 * and say it hasn't been sent before so it knows
 				 * to check for it's delay */
-				printf("[%s]Packet timed out\n\n", p->msg);
+				fprintf(n->srlog, "[#%d : %s]Packet timed out\n", tok->acknum, tok->pay);
+				printf("[#%d : %s]Packet timed out...\n", tok->acknum, tok->pay);
 
 				p->enqT = curtime;
 				p->sent = 0;
@@ -925,7 +943,8 @@ void checkmsgdelays(struct node *n, struct windowlist* wl)
 			if(p->enqT < curtime - r->delay && !p->received)
 			{
 				/* send the packet because it's delay is up */
-				printf("[%s]Packet sent\n\n", p->msg);
+				fprintf(n->srlog, "[#%d : %s]Packet is now in the network\n", tok->acknum, tok->pay);
+				printf("[#%d : %s]Packet is now in the network\n", tok->acknum, tok->pay);
 
 				p->enqT = curtime;
 				p->sent = 1;
@@ -934,6 +953,7 @@ void checkmsgdelays(struct node *n, struct windowlist* wl)
 			}
 		}
 
+		freetok(tok);
 		p = p->next;
 	}
 	

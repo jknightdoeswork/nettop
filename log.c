@@ -30,8 +30,6 @@ void createlogdir()
 
 FILE* createlogfile(char* nodename)
 {
-
-    fprintf(stderr, "about to create logfile at name: %s\n", nodename);
     char namepath[MAXFOLDERSIZE];
     bzero(namepath, MAXFOLDERSIZE);
     sprintf(namepath, "%s/%s", folderpath, nodename);

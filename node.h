@@ -1,12 +1,5 @@
-//
-//  node.h
-//  
-
 #ifndef _node_h
 #define _node_h
-
-/* MESSAGE FORMAT: 15`NODEA`NODEB`MESSAGE
-                Ack`Src`Dest`Payload */
 
 /* INCLUDES */
 
@@ -47,7 +40,6 @@
 /* GLOBALS */
 extern struct list *nodelist;
 extern int globalport;
-extern FILE *file;
 
 /* STRUCTURES */
 
@@ -102,13 +94,11 @@ struct routing_table_entry
 {
     char* name;
     char* through;
-    //planning
 
     float weight;
     int drop;
     int delay;
     
-    // eplanning
     struct routing_table_entry *next, *prev;
 };
 
@@ -130,7 +120,8 @@ struct node
     
     struct node *next, *prev;
 
-    FILE* logfile;
+    /* logfile for dvr logs, srlog for selective repeat logs */
+    FILE* logfile, *srlog;
 };
 
 /* holds a nodes lists of buffers it can send with */
