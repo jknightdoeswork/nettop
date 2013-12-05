@@ -166,7 +166,7 @@ struct node *addnode(char* name)
 /* given a node, and a name for our destination entry, add
  an RTE for the destination so our node knows about it */
 struct routing_table_entry *rtappend(struct node *w, char* name,
-		char* through, int delay, int drop, int weight)
+		char* through, int delay, int drop, float weight)
 {
     struct routing_table_entry *tmp;
     struct routing_table_entry *new;
@@ -251,7 +251,7 @@ void addedge(char* nodeaname, char* nodebname, int delay, int drop)
 {
 
     /* calc weight and get both nodes */
-    int weight = (100.0/(100.0-drop))*delay;
+    float weight = (100.0/(100.0-drop))*delay;
     struct node* nodea = getnodefromname(nodeaname);
     struct node* nodeb = getnodefromname(nodebname);
     
@@ -377,7 +377,7 @@ void printlist(struct list *l)
         
         while(ql != NULL)
         {
-            printf("- RTE [%s] W:%d THROUGH:[%s]\n", ql->name, ql->weight, ql->through);
+            printf("- RTE [%s] W:%f THROUGH:[%s]\n", ql->name, ql->weight, ql->through);
             if(DEBUGWINDOWS)
             {
                 printf("--------------------\nSendq sz [%d - %d]:\n",

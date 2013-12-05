@@ -18,9 +18,9 @@ void createlogdir()
     time_t curtime;
     time(&curtime);
 
-    strftime(folderpath, MAXFOLDERSIZE, "logs/%d-%m-%Y-%T", localtime(&curtime));
+    mkdir("logs", S_IREAD | S_IEXEC | S_IWRITE);
 
-    //sprintf(folderpath, "logs/%d/", (int)curtime);
+    strftime(folderpath, MAXFOLDERSIZE, "logs/%d-%m-%Y-%T", localtime(&curtime));
     fprintf(stderr, "about to create folder at path: %s\n", folderpath);
     if ((error = mkdir(folderpath, S_IREAD | S_IEXEC | S_IWRITE)) != 0)
     {
@@ -53,7 +53,7 @@ void log_routing_table(struct node* a, int timestep)
 
     while (rte != NULL)
     {
-        fprintf(logfile, "%s\t%s\t%d\n", rte->name, rte->through, rte->weight);
+        fprintf(logfile, "%s\t%s\t%.2f\n", rte->name, rte->through, rte->weight);
         rte = rte->next;
     }
     fprintf(logfile, "=====================\n");

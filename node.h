@@ -97,7 +97,7 @@ struct routing_table_entry
     char* through;
     //planning
 
-    int weight;
+    float weight;
     int drop;
     int delay;
     
@@ -142,7 +142,7 @@ enum globalenums
 
 /* for node.c */
 struct routing_table_entry *rtappend(struct node *w, char* name,
-		char* through, int delay, int drop, int weight);
+		char* through, int delay, int drop, float weight);
 struct node *append(struct list *l, char* name);
 void printwindow(struct window *q);
 int enqueue(struct window *q, char* msg);

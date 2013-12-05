@@ -3,7 +3,7 @@
 #include <string.h>
 #include <stdlib.h>
 
-#define msgformat "&%s`%s`%d`" //&me`dest`distance`
+#define msgformat "&%s`%s`%f`" //&me`dest`distance`
 int dvr_interval = 2;
 int is_neighbour(struct routing_table_entry* rte);
 
