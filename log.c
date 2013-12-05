@@ -21,12 +21,11 @@ void createlogdir()
     mkdir("logs", S_IREAD | S_IEXEC | S_IWRITE);
 
     strftime(folderpath, MAXFOLDERSIZE, "logs/%d-%m-%Y-%T", localtime(&curtime));
-    fprintf(stderr, "about to create folder at path: %s\n", folderpath);
+    
     if ((error = mkdir(folderpath, S_IREAD | S_IEXEC | S_IWRITE)) != 0)
     {
         fprintf(stderr, "error creating directory: %s", strerror(error));
     }
-    fprintf(stderr, "done\n");
 }
 
 FILE* createlogfile(char* nodename)

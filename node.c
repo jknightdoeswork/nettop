@@ -9,7 +9,6 @@
 
 struct list *nodelist;
 int globalport = 3490;
-FILE *file;
 
 /* frees a packet and the message in the packet */
 void freepacket(struct packet* p)
@@ -444,7 +443,7 @@ void printwindow(struct window *q)
 
 /* print out all nodes in a list, as well as all RTE's
  for each node */
-/*void printlist(struct list *l)
+void printlist(struct list *l)
 {
     if(l == NULL)
         return;
@@ -455,28 +454,34 @@ void printwindow(struct window *q)
     {
         printf("Node [%s]\n", w->name);
         struct routing_table_entry *ql = w->routing_table;
-        
+        struct windowlist* wl;
         while(ql != NULL)
         {
             printf("- RTE [%s] W:%f THROUGH:[%s]\n", ql->name, ql->weight, ql->through);
+            ql = ql->next;
+
             if(DEBUGWINDOWS)
             {
+                wl = getwindowlist(w, ql->name);
+                if (wl == NULL)
+                {
+                    printf("ERROR: No window list for RTE with name %s\n", ql->name);
+                }
                 printf("--------------------\nSendq sz [%d - %d]:\n",
-                       ql->sendq->first, ql->sendq->last);
-                printwindow(ql->sendq);
+                       wl->sendq->first, wl->sendq->last);
+                printwindow(wl->sendq);
                 printf("--------------------\nRecvq sz [%d - %d]:\n",
-                       ql->recvq->first, ql->recvq->last);
-                printwindow(ql->recvq);
+                       wl->recvq->first, wl->recvq->last);
+                printwindow(wl->recvq);
                 printf("--------------------\n");
             }
             
-            ql = ql->next;
         }
         w = w->next;
     }
     
     return;
-}*/
+}
 
 /* returns true if a comes before b in the sliding window */
 int comesfirst(int first, int a, int b)
@@ -1026,108 +1031,179 @@ void sigkillall()
 	return;
 }
 
-/* prompt the user input to send a message between nodes */
-void usersendmessage()
+/* parse which print they want to use, then print it */
+void parseprint(char *msg)
 {
-	char src[BUFSIZE], dest[BUFSIZE], msg[BUFSIZE];
-	char send[BUFSIZE];
-    char *saveptr;
-    struct node *nsrc;
+    char nodea[BUFSIZE];
+    char *tok;
+    struct node *n;
     
-    /* prompt user for input */
-	printf("Enter the name of the source node: ");
-	fgets(src, BUFSIZE, stdin);
-    /* remove trailing newline */
-    strtok_r(src, "\n", &saveptr);
-    
-    if((nsrc = getnodefromname(src)) == NULL)
+    /* if there is no backtick, it is a printall command */
+    if((tok = strstr(msg, "`")) == NULL)
     {
-        printf("[%s]Node does not exist\n", src);
-        return;
+        /* print all nodes information */
+        printlist(nodelist);
+    }
+    else
+    {
+        /* this means its a print node command */
+        if((tok = strtok(tok, DELIM)) == NULL)
+        {
+            fprintf(stderr, "Invalid format for print node\n");
+            return;
+        }
+        strcpy(nodea, tok);
+        
+        if((n = getnodefromname(nodea)) == NULL)
+        {
+            fprintf(stderr, "Error finding node to print\n");
+            return;
+        }
+        
+        /* if everything looks good print the node */
+        //printnode(n);
     }
     
-	printf("Enter the name of the destination node: ");
-	fgets(dest, BUFSIZE, stdin);
-    strtok_r(dest, "\n", &saveptr);
-    
-    if(getnodefromname(dest) == NULL)
-    {
-        printf("[%s]Node does not exist", dest);
-        return;
-    }
-    
-    /* see if there is an entry for this path, if there isn't, then
-     no connection exists so we can't send a message */
-    struct routing_table_entry *rte;
-    rte = getroutingtableentry(nsrc, dest);
-    struct windowlist *wl = NULL;
-    wl = getwindowlist(nsrc, dest);
-    
-    if (wl == NULL)
-    {
-        fprintf(stderr, "ERROR:[%s]-[%s]No window list between nodes exists\n", src, dest);
-        return;
-    }
-
-    if(rte == NULL)
-    {
-        printf("[%s]-[%s]No path between nodes exists\n. (Routing table could still be building)\n", src, dest);
-        return;
-    }
-    
-	printf("Enter the message to send: ");
-	fgets(msg, BUFSIZE, stdin);
-    
-    /* remove trailing newline from the input buffers */
-    strtok_r(msg, "\n", &saveptr);
-	
-    /* ship off 3 versions */
-	sprintf(send, "%d`%s`%s`%s", reqack(wl->sendq), src, dest, msg);
-	enqueue(wl->sendq, send);
-    sprintf(send, "%d`%s`%s`%s", reqack(wl->sendq), src, dest, msg);
-	enqueue(wl->sendq, send);
-    sprintf(send, "%d`%s`%s`%s", reqack(wl->sendq), src, dest, msg);
-	enqueue(wl->sendq, send);
-}
-
-/* prompt the user input to add a node to the topology */
-void useraddnode()
-{
-    char name[BUFSIZE];
-    char *saveptr;
-    printf("Enter the name of the node\n");
-    fgets(name, BUFSIZE, stdin);
-    
-    /* parse off the newline */
-    strtok_r(name, "\n", &saveptr);
-    
-    if(getnodefromname(name) != NULL)
-    {
-        printf("[%s]Node already exists\n", name);
-        return;
-    }
-    
-    addnode(name);
-    
-    printf("[%s]Node added\n", name);
     return;
 }
 
-// TODO: WE NEED A WAY TO REMOVE NODES SAFELY
-/* prompt the users input to remove a node in the topology */
-void userremovenode()
+/* parse a message to remove the edge */
+/*
+ -e`A`B                 -remove edge between A and B
+ */
+void parseremoveedge(char *msg)
+{
+    char nodea[BUFSIZE], nodeb[BUFSIZE];
+    char *tok;
+    
+    /* tokenize the remaining message */
+    if((tok = strtok(msg, DELIM)) == NULL)
+    {
+        fprintf(stderr, "Invalid format for remove edge\n");
+        return;
+    }
+    
+    strcpy(nodea, tok);
+    
+    if((tok = strtok(NULL, DELIM)) == NULL)
+    {
+        fprintf(stderr, "Invalid format for remove edge\n");
+        return;
+    }
+    
+    strcpy(nodeb, tok);
+    
+    /* remove the edge from the master list now */
+}
+
+/* parse adding an edge to the topology */
+/*
+ +e`A`B`delay`drop      +add edge from A to B to topology
+ */
+void parseaddedge(char *msg)
+{
+    char src[BUFSIZE], dest[BUFSIZE];
+    int delay, drop;
+    char *tok;
+    
+    struct node *nsrc;
+    
+    /* token off the newline */
+    if((tok = strtok(msg, DELIM)) == NULL)
+    {
+        fprintf(stderr, "Invalid format for add edge\n");
+        return;
+    }
+    strcpy(src, tok);
+    
+    
+    if((tok = strtok(NULL, DELIM)) == NULL)
+    {
+        fprintf(stderr, "Invalid format for add edge\n");
+        return;
+    }
+    
+    strcpy(dest, tok);
+    
+    if((tok = strtok(NULL, DELIM)) == NULL)
+    {
+        fprintf(stderr, "Invalid format for add edge\n");
+        return;
+    }
+    
+    delay = atoi(tok);
+    
+    if((tok = strtok(NULL, DELIM)) == NULL)
+    {
+        fprintf(stderr, "Invalid format for add edge\n");
+        return;
+    }
+    
+    drop = atoi(tok);
+    
+    /* done tokenizing get values */
+    if((nsrc = getnodefromname(src)) == NULL)
+    {
+        fprintf(stderr, "[%s]Node does not exist\n", src);
+        return;
+    }
+    
+    if(getnodefromname(dest) == NULL)
+    {
+        fprintf(stderr, "[%s]Node does not exist\n", dest);
+        return;
+    }
+    
+    struct routing_table_entry *rte;
+    rte = getroutingtableentry(nsrc, dest);
+    
+    if(rte != NULL)
+    {
+        // todo make this not an error but instead just modify edge
+        fprintf(stderr, "[%s]-[%s]Edge already exists\n", src, dest);
+        return;
+    }
+    
+    if(delay < 0)
+    {
+        fprintf(stderr, "[%s]-[%s]Edge delay must be >= 0\n", src, dest);
+        return;
+    }
+    
+    if(drop<0 || drop>100)
+    {
+        fprintf(stderr, "[%s]-[%s]Edge drop probability must be between 0-100\n",
+               src, dest);
+        return;
+    }
+    
+    addedge(src, dest, delay, drop);
+    printf("[%s]-[%s]Edge added : (-delay:%ds -drop:%d%%)\n",
+           src, dest, delay, drop);
+    
+    return;
+}
+
+/* parse removing a node from the topology */
+/*
+ -n`A                   -remove node A from topology
+ */
+void parseremovenode(char *msg)
 {
     char name[BUFSIZE];
-    char *saveptr;
-    printf("Enter the name of the node to remove\n");
-    fgets(name, BUFSIZE, stdin);
+    char *tok;
     
     /* parse off the newline */
-    strtok_r(name, "\n", &saveptr);
+    if((tok = strtok(msg, DELIM)) == NULL)
+    {
+        fprintf(stderr, "Invalid format for remove node\n");
+        return;
+    }
+    strcpy(name, tok);
     
     if(getnodefromname(name) == NULL)
     {
-        printf("[%s]Node does not exist\n", name);
+        fprintf(stderr, "[%s]Node does not exist\n", name);
         return;
     }
     
@@ -1138,158 +1214,223 @@ void userremovenode()
     return;
 }
 
-//TODO : Decide to create the nodes if they don't exist, or only
-//accept edges on existing nodes
-/* prompt the users input to add an edge to the topology */
-void useraddedge()
+/* parse adding a node to the topology */
+/*
+ +n`A                   -add node A to topology
+ */
+void parseaddnode(char *msg)
 {
-    char name1[BUFSIZE], name2[BUFSIZE], other[BUFSIZE];
-    int delay, drop;
-    char *saveptr;
+    char name[BUFSIZE];
+    char *tok;
+    
+    /* parse off the newline */
+    if((tok = strtok(msg, DELIM)) == NULL)
+    {
+        fprintf(stderr, "Invalid format for add node\n");
+        return;
+    }
+    strcpy(name, tok);
+    
+    if(getnodefromname(name) != NULL)
+    {
+        fprintf(stderr, "[%s]Node already exists\n", name);
+        return;
+    }
+    
+    addnode(name);
+    
+    printf("[%s]Node added\n", name);
+    return;
+}
+
+/* parse sending a message between nodes */
+/*
+ +s`A`B`Message         -send message from A to B
+ */
+void parsesendmessage(char *msg)
+{
+    char src[BUFSIZE], dest[BUFSIZE], pay[BUFSIZE], send[BUFSIZE];
+    char *tok;
     
     struct node *nsrc;
     
-    /* prompt for input */
-    printf("Enter the name of the first node on the edge\n");
-    fgets(name1, BUFSIZE, stdin);
-    /* token off the newline */
-    strtok_r(name1, "\n", &saveptr);
-    
-    if((nsrc = getnodefromname(name1)) == NULL)
+    /* parse the message */
+    if((tok = strtok(msg, DELIM)) == NULL)
     {
-        printf("[%s]Node does not exist\n", name1);
+        fprintf(stderr, "Invalid format for sending a message\n");
+        return;
+    }
+    strcpy(src, tok);
+    
+    if((tok = strtok(NULL, DELIM)) == NULL)
+    {
+        fprintf(stderr, "Invalid format for sending a message\n");
+        return;
+    }
+    strcpy(dest, tok);
+    
+    if((tok = strtok(NULL, DELIM)) == NULL)
+    {
+        fprintf(stderr, "Invalid format for sending a message\n");
         return;
     }
     
-    printf("Enter the name of the second node on the edge\n");
-    fgets(name2, BUFSIZE, stdin);
-    strtok_r(name2, "\n", &saveptr);
+    strcpy(pay, tok);
     
-    if(getnodefromname(name2) == NULL)
+    /* error check */
+    if((nsrc = getnodefromname(src)) == NULL)
     {
-        printf("[%s]Node does not exist\n", name2);
+        fprintf(stderr, "[%s]Node does not exist\n", src);
         return;
     }
     
-    struct routing_table_entry *rte;
-    rte = getroutingtableentry(nsrc, name2);
-    
-    if(rte != NULL)
+    if(getnodefromname(dest) == NULL)
     {
-        printf("[%s]-[%s]Edge already exists\n", name1, name2);
+        fprintf(stderr, "[%s]Node does not exist", dest);
         return;
     }
     
-    /* get delay */
-    printf("Enter the delay over the edge (integer in s)\n");
-    fgets(other, BUFSIZE, stdin);
-    delay = atoi(other);
+    /* see if there is an entry for this path, if there isn't, then
+     no connection exists so we can't send a message */
+    struct windowlist *wl;
+    wl = getwindowlist(nsrc, dest);
     
-    if(delay < 0)
+    if(wl == NULL)
     {
-        printf("[%s]-[%s]Edge delay must be >= 0\n", name1, name2);
+        fprintf(stderr, "[%s]-[%s]No path between nodes exists\n", src, dest);
         return;
     }
     
-    memset(other, 0, BUFSIZE);
-    
-    /* get drop prob */
-    printf("Enter the drop probability (integer from 0-100)\n");
-    fgets(other, BUFSIZE, stdin);
-    drop = atoi(other);
-    
-    if(drop<0 || drop>100)
-    {
-        printf("[%s]-[%s]Edge drop probability must be between 0-100\n",
-               name1, name2);
-        return;
-    }
-    
-    addedge(name1, name2, delay, drop);
-    printf("[%s]-[%s]Edge added : (-delay:%ds -drop:%d%%)\n",
-           name1, name2, delay, drop);
+    /* otherwise valid, so format the message and print */
+    sprintf(send, "%d`%s`%s`%s", reqack(wl->sendq), src, dest, pay);
+	enqueue(wl->sendq, send);
     
     return;
 }
 
-/* display the menu to the user */
-void displaymenu()
-{
-	printf("\n\n----------------------\n");
-	printf("Enter 0 to exit\n");
-	printf("Enter 1 to send a message\n");
-	printf("Enter 2 to add a node\n");
-	printf("Enter 3 to remove a node\n");
-	printf("Enter 4 to add an edge\n");
-	printf("Enter 5 to modify an edge\n");
-	printf("Enter 6 to print the routing table\n");
-	printf("----------------------\n\n");
-	
-	return;
-}
+/* function formats. Use addedge to modify existing edges as well
+ 
+ +s`A`B`Message         -send message from A to B
+ +n`A                   -add node A to topology
+ -n`A                   -remove node A from topology
+ +e`A`B`delay`drop      +add edge from A to B to topology
+ -e`A`B                 -remove edge between A and B from topology
+ print`A
+ printall
+ 
+ */
 
-/* main accept loop for user input */
-void userloop()
+/* parse the first two characters to see what time of command
+ it is */
+void determinetype(char *filename)
 {
-	char c, ch;
-	
-	printf("-------------INUSERLOOP------------\n");
-	
-	while(c != '0')
-	{
-		displaymenu();
-		
-		c = getchar();
-		
-		/* consume all the extra input */
-		while ((ch = getchar() != '\n') && (ch != EOF));
-		
-        /* consider all cases */
-		switch(c)
-		{
-			case '0':
-				return;
-				break;
-			case '1':
-				usersendmessage();
-				break;
-			case '2':
-				useraddnode();
-				break;
-			case '3':
-				userremovenode();
-				break;
-			case '4':
-				useraddedge();
-				break;
-			case '5':
-				//usermodedge();
-				break;
-			case '6':
-                // TODO
-                printf("not implemented yet\n");
-				break;
-			default:
-				break;
-		}
-	}
-	
-	return;
+    FILE *file = fopen(filename, "r");
+    char line[BUFSIZE];
+    char remainder[BUFSIZE];
+    char two[3];
+    int stdone = 0;
+    
+    /* this means one of two things, either invalid file, or
+     purposely skip straight to manual input. either way...
+     skip straight to manual input */
+    if(file == NULL)
+    {
+        file = stdin;
+    }
+    
+    while(!feof(file) || file == stdin)
+    {
+        /* let the user know they can input */
+        if(file == stdin && !stdone)
+        {
+            printf("--------------------\n");
+            printf("Accepting user input\n");
+            printf("Type exit or quit to exit\n");
+            printf("--------------------\n\n");
+            stdone = 1;
+        }
+        
+        /* each line includes the newline at the end */
+        if(fgets(line, BUFSIZE, file))
+        {
+            /* at least 2 chars need to be present for a
+             control message so discard if smaller */
+            if(strlen(line) < 2)
+            {
+                /* can't be a real message, so don't try
+                 to tokenize it, just skip this line */
+                continue;
+            }
+            
+            memset(two, 0, sizeof(two));
+            memset(remainder, 0, sizeof(remainder));
+            
+            strncpy(two, line, 2);
+            two[2] = '\0';
+            /* move over 2 to skip the control */
+            strncpy(remainder, line+(2*sizeof(char)),
+                    strlen(line)-2*(sizeof(char)));
+            
+            if(strcmp("+s", two) == 0)
+            {
+                /* call parsesend */
+                parsesendmessage(remainder);
+            }
+            else if(strcmp("+n", two) == 0)
+            {
+                parseaddnode(remainder);
+            }
+            else if(strcmp("-n", two) == 0)
+            {
+                parseremovenode(remainder);
+            }
+            else if(strcmp("+e", two) == 0)
+            {
+                parseaddedge(remainder);
+            }
+            else if(strcmp("-e", two) == 0)
+            {
+                parseremoveedge(remainder);
+            }
+            else if(strcmp("pr", two) == 0)
+            {
+                parseprint(remainder);
+            }
+            else if(strcmp("ex", two) == 0 || strcmp("qu", two) == 0)
+            {
+                return;
+            }
+            else
+            {
+                fprintf(stderr, "Unrecognized command\n");
+            }
+        }
+        else
+        {
+            /* we've reached the end of the input file
+             so point to stdin */
+            fclose(file);
+            file = stdin;
+        }
+        
+    }
+    
+    return;
 }
 
 /* temp main function */
-int main()
+int main(int argc, char *argv[])
 {
 	/* initialize and create the nodes */
     initialize();
     createlogdir();
     
-    file = fopen("readoutput", "w");
-    parse_file("test.top");
-        
-    userloop();
-    
-    fclose(file);
+    /* just go straight to userloop if they didn't specify
+     an input file */
+    if(argc>1)
+        determinetype(argv[1]);
+    else
+        determinetype("\0");
     
     sigkillall();
     pthread_exit(NULL);
