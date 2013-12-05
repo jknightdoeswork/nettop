@@ -41,7 +41,7 @@
 #define BUFSIZE 256
 #define TIMEOUTVAL 1
 #define LOCALHOST "127.0.0.1"
-#define DELIM "`"
+#define DELIM "`\n"
 #define CONTROLCHARS "&+-"
 
 /* GLOBALS */
