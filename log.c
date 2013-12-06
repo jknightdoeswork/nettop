@@ -48,6 +48,15 @@ void log_routing_table(struct node* a, int timestep, int resetstep)
         return;
     }
     FILE* logfile = a->logfile;
+    log_routing_table_to_fd(a, timestep, resetstep, logfile);
+}
+
+void log_routing_table_to_fd(struct node* a, int timestep, int resetstep, FILE* logfile)
+{
+    if (a == NULL) {
+        fprintf(stderr, "ERROR: log routing table got null node\n");
+        return;
+    }
     if (logfile == NULL) {
         fprintf(stderr, "ERROR: log routing table got node [%s] with null fd\n", a->name);
         return;

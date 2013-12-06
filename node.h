@@ -146,7 +146,6 @@ enum globalenums
 struct routing_table_entry *rtappend(struct node *w, char* name,
 		char* through, int delay, int drop, float weight, int neighbourtable);
 struct node *append(struct list *l, char* name);
-void printwindow(struct window *q);
 int enqueue(struct window *q, char* msg);
 int comesfirst(int first, int a, int b);
 struct packet *dequeue(struct window *q);
@@ -171,7 +170,13 @@ void freewindowlist(struct windowlist* w);
 void freeroutingtableentry(struct routing_table_entry *rte);
 void createwindowlist(struct node* w, char* name);
 struct windowlist* getwindowlist(struct node* w, char* name);
-struct routing_table_entry *getroutingtableentry(struct node *src, char *dest);
+struct routing_table_entry *getroutingtableentry(struct node *src, char *dest, int master);
+
+void printeverything();
+void printnodewindows(struct node *n);
+void printwindowlist(struct node *n, struct windowlist *w);
+void printwindow(struct node *n, struct window *w);
+void printdvr(struct node *n);
 
 
 /* for swind.c */
@@ -242,4 +247,5 @@ FILE* createlogfile(char* nodename);
  */
 void createlogdir();
 void log_routing_table(struct node* a, int timestep, int resetstep);
+void log_routing_table_to_fd(struct node* a, int timestep, int resetstep, FILE* logfile);
 #endif

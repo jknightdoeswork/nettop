@@ -136,6 +136,44 @@ void deletenode(struct node *n)
     return;
 }
 
+/* delete a routing table entry */
+void deleterte(struct node *n, struct routing_table_entry *rte, int master)
+{
+	if(n == NULL)
+	{
+		fprintf(stderr, "Node was null while trying to delete rte\n");
+		return;
+	}
+	
+	if(rte == NULL)
+	{
+		fprintf(stderr, "Error deleting rte: NULL\n");
+		return;
+	}
+	
+	/* check if first item */
+	if(master)
+	{
+		if(n->connected_edges == rte)
+			n->connected_edges = rte->next;
+	}
+	else
+	{
+		if(n->routing_table == rte)
+			n->routing_table = rte->next;
+	}
+	
+	/* adjust it's neighbours pointers to exclude it */
+	if(rte->prev != NULL)
+		rte->prev->next = rte->next;
+	
+	if(rte->next != NULL)
+		rte->next->prev = rte->prev;
+	
+	freeroutingtableentry(rte);
+	return;
+}
+
 /* add a node entry to our global list of nodes */
 struct node *addnode(char* name)
 {
@@ -250,7 +288,6 @@ void createwindowlist(struct node* w, char* name)
     }
 }
 
-// TODO CONSIDER REFACTORING
 /* given a node, and a name for our destination entry, add
  an RTE for the destination so our node knows about it */
 struct routing_table_entry *rtappend(struct node *w, char* name,
@@ -418,68 +455,6 @@ int reqack(struct window *q)
     int tmp = q->cur;
     q->cur = plusone(q->cur);
     return tmp;
-}
-
-/* prints all the packets currently buffered in the
- window and prints out the window's current (true) size*/
-void printwindow(struct window *q)
-{
-    if(q == NULL)
-        return;
-    
-    struct packet *el = q->head;
-    
-    while(el != NULL)
-    {
-        printf("[%d]-%s\n", el->received, el->msg);
-        el = el->next;
-    }
-    
-    printf("Sz: %d\n", q->sz);
-    
-    return;
-}
-
-/* print out all nodes in a list, as well as all RTE's
- for each node */
-void printlist(struct list *l)
-{
-    if(l == NULL)
-        return;
-    
-    struct node *w = l->head;
-    
-    while(w != NULL)
-    {
-        printf("Node [%s]\n", w->name);
-        struct routing_table_entry *ql = w->routing_table;
-        struct windowlist* wl;
-        while(ql != NULL)
-        {
-            printf("- RTE [%s] W:%f THROUGH:[%s]\n", ql->name, ql->weight, ql->through);
-            ql = ql->next;
-
-            if(DEBUGWINDOWS)
-            {
-                wl = getwindowlist(w, ql->name);
-                if (wl == NULL)
-                {
-                    printf("ERROR: No window list for RTE with name %s\n", ql->name);
-                }
-                printf("--------------------\nSendq sz [%d - %d]:\n",
-                       wl->sendq->first, wl->sendq->last);
-                printwindow(wl->sendq);
-                printf("--------------------\nRecvq sz [%d - %d]:\n",
-                       wl->recvq->first, wl->recvq->last);
-                printwindow(wl->recvq);
-                printf("--------------------\n");
-            }
-            
-        }
-        w = w->next;
-    }
-    
-    return;
 }
 
 /* returns true if a comes before b in the sliding window */
@@ -785,7 +760,7 @@ void sendudp(char *src, char *msg, char *dest)
     /* get the entry for what node it goes through and
      send to intermediate node */
     struct routing_table_entry *rte, *r;
-    rte = getroutingtableentry(n, dest);
+    rte = getroutingtableentry(n, dest, 0);
 
 	struct msgtok *tok = tokenmsg(msg);
 
@@ -797,7 +772,7 @@ void sendudp(char *src, char *msg, char *dest)
     }
     
     /* get the node we go through */
-    r = getroutingtableentry(getnodefromname(src), rte->through);
+    r = getroutingtableentry(getnodefromname(src), rte->through, 0);
     
     if(rte == NULL || r == NULL)
     {
@@ -829,9 +804,14 @@ void sendudp(char *src, char *msg, char *dest)
 }
 
 /* given a source node, get it's routing table entry for the dest */
-struct routing_table_entry *getroutingtableentry(struct node *src, char *dest)
+struct routing_table_entry *getroutingtableentry(struct node *src, char *dest, int master)
 {
-    struct routing_table_entry *iter = src->routing_table;
+    struct routing_table_entry *iter;
+    
+    if(master)
+	iter = src->connected_edges;
+    else
+	iter = src->routing_table;
     
     /* loop on everything in our routing table */
     while (iter != NULL)
@@ -850,7 +830,7 @@ struct routing_table_entry *getroutingtableentry(struct node *src, char *dest)
  delivery (handled elsewhere) */
 void checkackdelays(struct node *n, struct windowlist *wl)
 {
-    struct routing_table_entry *rte = getroutingtableentry(n, wl->name);
+    struct routing_table_entry *rte = getroutingtableentry(n, wl->name, 0);
 	if(rte == NULL)
 		return;
 
@@ -866,7 +846,7 @@ void checkackdelays(struct node *n, struct windowlist *wl)
     }
     
 	struct packet *p = w->head;
-	struct routing_table_entry *r = getroutingtableentry(n, rte->through);
+	struct routing_table_entry *r = getroutingtableentry(n, rte->through, 0);
 
 	if(r == NULL)
 		return;
@@ -898,7 +878,7 @@ void checkmsgdelays(struct node *n, struct windowlist* wl)
         return;
     }
     
-    struct routing_table_entry *rte = getroutingtableentry(n, wl->name);
+    struct routing_table_entry *rte = getroutingtableentry(n, wl->name, 0);
 	if(rte == NULL)
 		return;
 
@@ -914,7 +894,7 @@ void checkmsgdelays(struct node *n, struct windowlist* wl)
     }
     
 	struct packet *p = w->head;
-	struct routing_table_entry *r = getroutingtableentry(n, rte->through);
+	struct routing_table_entry *r = getroutingtableentry(n, rte->through, 0);
 
 	if(r == NULL)
 		return;
@@ -1051,27 +1031,180 @@ void sigkillall()
 	return;
 }
 
+/* print the dvr entries for node n */
+void printnodedvr(struct node *n)
+{
+	if(n == NULL)
+		return;
+	
+	log_routing_table_to_fd(n, time(NULL), 0, stdout);
+	log_routing_table(n, time(NULL), 0);
+	
+	return;
+}
+
+/* prints all the packets currently buffered in the
+ window and prints out the window's current (true) size*/
+void printwindow(struct node *n, struct window *w)
+{
+    if(w == NULL)
+        return;
+    
+    struct packet *el = w->head;
+    struct msgtok *tok;
+    
+    while(el != NULL)
+    {
+	tok = tokenmsg(el->msg);
+	if(tok->type == enumrealmsg)
+	{
+		printf("----[%s]-[%s] [#%d][%s]\n",
+			tok->src, tok->dest, tok->acknum, tok->pay);
+		fprintf(n->srlog, "----[%s]-[%s] [#%d][%s]\n",
+			tok->src, tok->dest, tok->acknum, tok->pay);
+	}
+	else if(tok->type == enumpureack)
+	{
+		printf("----[%s]-[%s] [Ack#%d]\n",
+		       tok->src, tok->dest, tok->acknum);
+		fprintf(n->srlog, "----[%s]-[%s] [Ack#%d]\n",
+		       tok->src, tok->dest, tok->acknum);
+	}
+	else if(tok->type == enumnack)
+	{
+		printf("----[%s]-[%s] [Nack#%d]\n",
+		       tok->src, tok->dest, tok->acknum);
+		fprintf(n->srlog, "----[%s]-[%s] [Nack#%d]\n",
+		       tok->src, tok->dest, tok->acknum);
+	}
+	
+	freetok(tok);
+	tok = NULL;
+	
+        el = el->next;
+    }
+	
+    fflush(n->srlog);
+    
+    return;
+}
+
+/* print all of the windows for a windowlist */
+void printwindowlist(struct node *n, struct windowlist *w)
+{
+	/* print sendq, then recvq then ackq */
+	if(w->sendq != NULL)
+	{
+		printf("--Send Buffer [Sz:%d]\n", w->sendq->sz);
+		fprintf(n->srlog, "--Send Buffer [Sz:%d]\n", w->sendq->sz);
+		printwindow(n, w->sendq);
+	}
+	/* print recvq */
+	if(w->recvq != NULL)
+	{
+		printf("--Recv Buffer [Sz:%d]\n", w->recvq->sz);
+		fprintf(n->srlog, "--Recv Buffer [Sz:%d]\n", w->recvq->sz);
+		printwindow(n, w->recvq);
+	}
+	/* ackq */
+	if(w->ackq != NULL)
+	{
+		printf("--Fwd Buffer [Sz:%d]\n", w->ackq->sz);
+		fprintf(n->srlog, "--Fwd Buffer [Sz:%d]\n", w->ackq->sz);
+		printwindow(n, w->ackq);
+	}
+	
+	fflush(n->srlog);
+	
+	return;
+}
+
+/* print all of the windows for a node */
+void printnodewindows(struct node *n)
+{
+	if(n == NULL)
+		return;
+	
+	struct windowlist *wl = n->windows;
+	
+	printf("[%s] ==========================\n", n->name);
+	fprintf(n->srlog, "[%s] ==========================\n", n->name);
+	
+	while(wl != NULL)
+	{
+		if(strcmp(wl->name, n->name) != 0)
+		{
+			printf("--[%s]\n", wl->name);
+			fprintf(n->srlog, "--[%s]\n", wl->name);
+			printwindowlist(n, wl);
+			printf("--\n");
+			fprintf(n->srlog, "--\n");
+		}
+		
+		wl = wl->next;
+	}
+	
+	fflush(n->srlog);
+	
+	return;
+}
+
+/* print all dvr and window information */
+void printeverything()
+{
+	struct list *l = nodelist;
+	
+	if(l == NULL)
+		return;
+	
+	struct node *n = l->head;
+	
+	/* iterate for all nodes */
+	while(n != NULL)
+	{
+		printnodedvr(n);
+		printnodewindows(n);
+		
+		n = n->next;
+	}
+	
+	return;
+}
+
 /* parse which print they want to use, then print it */
 void parseprint(char *msg)
 {
     char nodea[BUFSIZE];
     char *tok;
     struct node *n;
+    int type=0;
     
     /* if there is no backtick, it is a printall command */
     if((tok = strstr(msg, "`")) == NULL)
     {
         /* print all nodes information */
-        printlist(nodelist);
+        printeverything();
     }
     else
     {
-        /* this means its a print node command */
+	/* get the node name, first token will be the rest of
+	 "print" */
         if((tok = strtok(tok, DELIM)) == NULL)
         {
             fprintf(stderr, "Invalid format for print node\n");
             return;
         }
+	
+	/* mark the type if this token is for dvr */
+	if(strcmp("dvr", tok) == 0)
+		type = 1;
+	
+	/* the third will be the node name */
+	if((tok = strtok(NULL, DELIM)) == NULL)
+	{
+		fprintf(stderr, "Invalid format for print node\n");
+		return;
+	}
         strcpy(nodea, tok);
         
         if((n = getnodefromname(nodea)) == NULL)
@@ -1080,8 +1213,11 @@ void parseprint(char *msg)
             return;
         }
         
-        /* if everything looks good print the node */
-        //printnode(n);
+        /* type 1 means this was a dvr command, type 0 was window */
+	if(type)
+		printnodedvr(n);
+	else
+		printnodewindows(n);
     }
     
     return;
@@ -1114,6 +1250,24 @@ void parseremoveedge(char *msg)
     strcpy(nodeb, tok);
     
     /* remove the edge from the master list now */
+    struct node *na = getnodefromname(nodea);
+    struct node *nb = getnodefromname(nodeb);
+    
+    if(na == NULL || nb == NULL)
+    {
+	    fprintf(stderr, "Could not find either nodea or nodeb to remove the edge\n");
+	    return;
+    }
+    
+    struct routing_table_entry *rte;
+    
+    /* get and delete both master entries */
+    rte = getroutingtableentry(na, nodeb, 1);
+    deleterte(na, rte, 1);
+    rte = getroutingtableentry(nb, nodea, 1);
+    deleterte(nb, rte, 1);
+    
+    return;
 }
 
 /* parse adding an edge to the topology */
@@ -1175,11 +1329,10 @@ void parseaddedge(char *msg)
     }
     
     struct routing_table_entry *rte;
-    rte = getroutingtableentry(nsrc, dest);
+    rte = getroutingtableentry(nsrc, dest, 0);
     
     if(rte != NULL)
     {
-        // todo make this not an error but instead just modify edge
         fprintf(stderr, "[%s]-[%s]Edge already exists\n", src, dest);
         return;
     }
@@ -1190,7 +1343,7 @@ void parseaddedge(char *msg)
         return;
     }
     
-    if(drop<0 || drop>100)
+    if(drop<0 || drop>=100)
     {
         fprintf(stderr, "[%s]-[%s]Edge drop probability must be between 0-100\n",
                src, dest);
@@ -1381,13 +1534,14 @@ void syncwait()
 /* function formats. Use addedge to modify existing edges as well
  
  +s`A`B`Message         -send message from A to B
- +n`A                   -add node A to topology
+ +n`A                   +add node A to topology
  -n`A                   -remove node A from topology
  +e`A`B`delay`drop      +add edge from A to B to topology
  -e`A`B                 -remove edge between A and B from topology
- print`A
- printall
- wait
+ print`wind`A		print all windows for A
+ print`dvr`A		print all DVR entries for A
+ printall		print everything for all nodes
+ wait			wait for everything in the network to be resolved
 
  */
 
