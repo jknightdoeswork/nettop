@@ -13,11 +13,8 @@ node.o: node.c
 swind.o: swind.c
 	$(CC) $(CFLAGS) -c swind.c
 
-node: node.o swind.o parser.o dvr.o log.o
-	$(CC) $(CFLAGS) -o node node.o log.o swind.o parser.o dvr.o -lpthread
-
-parser.o: parser.c
-	$(CC) $(CFLAGS) -c parser.c
+node: node.o swind.o dvr.o log.o
+	$(CC) $(CFLAGS) -o node node.o log.o swind.o dvr.o -lpthread
 
 dvr.o: dvr.c
 	$(CC) $(CFLAGS) -c dvr.c
@@ -26,5 +23,5 @@ log.o: log.c
 	$(CC) $(CFLAGS) -c log.c
 
 clean:
-	rm -rf *.o node parser
+	rm -rf *.o node
 
