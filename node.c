@@ -869,7 +869,8 @@ void sendudp(char *src, char *msg, char *dest)
 		fprintf(n->srlog, "[%s]Dropping message [%d : %s] on it's way from [%s] to [%s]\n",
 			   src, tok->acknum, tok->pay, tok->src, tok->dest);
     }
-    
+   
+   fflush(n->srlog); 
 	freetok(tok);
     return;
 }
@@ -1008,6 +1009,7 @@ void checkmsgdelays(struct node *n, struct windowlist* wl)
 		p = p->next;
 	}
 	
+	fflush(n->srlog);
 	return;
 }
 

@@ -133,7 +133,8 @@ void clearwindow(struct windowlist *wl, int type)
 				struct node *n = getnodefromname(tok->dest);
                 fprintf(n->srlog, "Msg [#%d : %s] is now in order and being handled\n",
 					tok->acknum, tok->pay);
-                
+                fflush(n->srlog);
+		
                 /* free the memory we were using */
                 freepacket(el);
             }
@@ -150,7 +151,7 @@ void clearwindow(struct windowlist *wl, int type)
             break;
 	}
     }
-    
+     
     return;
 }
 
@@ -433,6 +434,7 @@ void handleack(char *name, struct msgtok *tok)
     
     clearwindow(dwl, enumpureack);
     
+    fflush(n->srlog);
     return;
 }
 
@@ -500,6 +502,7 @@ void handlenack(char *name, struct msgtok *tok)
         el = el->next;
     }
     
+    fflush(n->srlog);
     return;
 }
 
@@ -574,5 +577,6 @@ void handlemsg(char *name, struct msgtok *tok)
 	    clearwindow(ql, enumrealmsg);
     }
     
+    fflush(n->srlog);
     return;
 }
