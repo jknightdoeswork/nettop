@@ -1339,6 +1339,7 @@ void parseremoveedge(char *msg)
     rte = getroutingtableentry(nb, nodea, 1);
     deleterte(nb, rte, 1);
     
+    printf("[%s]-[%s]Edge removed\n", nodea, nodeb);
     return;
 }
 
