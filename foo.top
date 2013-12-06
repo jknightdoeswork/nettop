@@ -1,0 +1,19 @@
++n`A
++n`B
++n`C
++n`D
++n`E
++e`A`B`1`10
++e`B`C`6`14
++e`B`D`2`11
++e`C`D`1`12
++e`C`E`3`5
++e`D`E`4`9
+wait`3
++s`B`E`Hello world
+wait
+-e`C`E
++s`A`E`Foo bar
++s`A`E`I love computer science
+wait
+

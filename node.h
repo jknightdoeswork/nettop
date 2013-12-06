@@ -21,7 +21,6 @@
 #include <pthread.h>
 #include <limits.h>
 #include <math.h>
-#include "parser.h"
 
 /* DEFINES */
 

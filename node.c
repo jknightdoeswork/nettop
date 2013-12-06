@@ -1424,8 +1424,10 @@ void parseaddedge(char *msg)
     }
     
     addedge(src, dest, delay, drop);
-    printf("[%s]-[%s]Edge added : (-delay:%ds -drop:%d%%)\n",
-           src, dest, delay, drop);
+    float weight = (100.0/(100.0-drop))*delay;
+
+    printf("[%s]-[%s]Edge added : (-delay:%ds -drop:%d%%) calculated weight: %f\n",
+           src, dest, delay, drop, weight);
     
     return;
 }
@@ -1605,6 +1607,27 @@ void syncwait()
 	return;
 }
 
+/* parse which type of wait they want */
+void parsewait(char *msg)
+{
+	char *tok;
+	if((tok = strtok(msg, DELIM)) == NULL)
+		return;
+
+	if((tok = strtok(NULL, DELIM)) == NULL)
+	{
+		syncwait();
+	}
+	else
+	{
+		int sleeptime = atoi(tok);
+		printf("Sleeping [%d] seconds\n", sleeptime);
+		sleep(sleeptime);
+	}
+	
+	return;
+}
+
 /* function formats. Use addedge to modify existing edges as well
  
  +s`A`B`Message         -send message from A to B
@@ -1616,6 +1639,7 @@ void syncwait()
  print`dvr`A		print all DVR entries for A
  printall		print everything for all nodes
  wait			wait for everything in the network to be resolved
+ wait`20		sleep for a specified length of time
 
  */
 
@@ -1695,10 +1719,10 @@ void determinetype(char *filename)
             {
                 parseprint(remainder);
             }
-			else if(strcmp("wa", two) == 0)
-			{
-				syncwait();
-			}
+	    else if(strcmp("wa", two) == 0)
+	    {
+		parsewait(remainder);
+	    }
             else if(strcmp("ex", two) == 0 || strcmp("qu", two) == 0)
             {
                 return;

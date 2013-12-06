@@ -96,9 +96,9 @@ void handledvrmessage(struct node* nodea, struct msgtok* msg)
     // i am node a
     char* nodebname = msg->src;
     char* nodecname = msg->dest;
-    int bcweight = atoi(msg->pay);
-    int abweight;
-    int abcweight;
+    float bcweight = (float)atof(msg->pay);
+    float abweight;
+    float abcweight;
     int routingtablechanged = 0;
     struct routing_table_entry* abrte;
     struct routing_table_entry* acrte;
@@ -107,7 +107,6 @@ void handledvrmessage(struct node* nodea, struct msgtok* msg)
     // find distance between a, b
     abrte = getroutingtableentry(nodea, nodebname, 0);
     if (abrte == NULL) {
-        fprintf(stderr, "ERROR handledvrmessage. %s is not in %s's routing table\n", nodebname, nodea->name);
         return;
     }
     
