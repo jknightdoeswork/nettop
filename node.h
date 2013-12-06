@@ -40,6 +40,7 @@
 /* GLOBALS */
 extern struct list *nodelist;
 extern int globalport;
+extern int dvr_reset_interval;
 
 /* STRUCTURES */
 
@@ -171,6 +172,8 @@ void freeroutingtableentry(struct routing_table_entry *rte);
 void createwindowlist(struct node* w, char* name);
 struct windowlist* getwindowlist(struct node* w, char* name);
 struct routing_table_entry *getroutingtableentry(struct node *src, char *dest, int master);
+void deleterte(struct node *n, struct routing_table_entry *rte, int master);
+void syncwait();
 
 void printeverything();
 void printnodewindows(struct node *n);

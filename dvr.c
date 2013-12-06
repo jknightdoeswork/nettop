@@ -81,7 +81,7 @@ void send_dvr_message(struct node* src, char* dest)
     struct routing_table_entry *rte = src->routing_table;
     while (rte != NULL)
     {
-        if (strcmp(rte->name, dest) != 0)
+        if (strcmp(rte->through, dest) != 0)
         {
             bzero(message, BUFSIZE);
             sprintf(message, msgformat, src->name, rte->name, rte->weight);

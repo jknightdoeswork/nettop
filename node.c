@@ -54,11 +54,13 @@ void freeroutingtableentry(struct routing_table_entry *rte)
 }
 
 /* free an entire list of routing tables */
-void freeroutingtable(struct node *n)
+void freeroutingtables(struct node *n)
 {
     /* point our rte to the head of the routing table */
     struct routing_table_entry *rte = n->routing_table;
     struct routing_table_entry *temp;
+    
+    int once = 0;
     
     /* call this free on every routing table entry */
     while(rte != NULL)
@@ -69,9 +71,38 @@ void freeroutingtable(struct node *n)
         rte = rte->next;
         /* then free the original one still held in temp */
         freeroutingtableentry(temp);
+	
+	/* do the routing table first, then the connected edges */
+	if(rte == NULL && !once)
+	{
+		rte = n->connected_edges;
+		once = 1;
+	}
     }
     
     return;
+}
+
+/* deletes a nodes windowlist */
+void deletewindowlist(struct node *n, struct windowlist *wl)
+{
+	if(n->windows == wl)
+	{
+		n->windows = wl->next;
+	}
+	if(wl->next != NULL)
+	{
+		wl->next->prev = wl->prev;
+	}
+	if(wl->prev != NULL)
+	{
+		wl->prev->next = wl->next;
+	}
+	
+	freewindowlist(wl);
+	wl = NULL;
+	
+	return;
 }
 
 /* free everything in a node, going deeper to free every sub-component */
@@ -88,7 +119,16 @@ void freenode(struct node *n)
     n->prev = NULL;
     
     /* free the routing table which goes deeper on itself */
-    freeroutingtable(n);
+    freeroutingtables(n);
+    
+    struct windowlist *wl = n->windows;
+    
+    while(wl != NULL)
+    {
+	    deletewindowlist(n, wl);
+	    
+	    wl = wl->next;
+    }
     
     free(n);
     n = NULL;
@@ -130,13 +170,42 @@ void deletenode(struct node *n)
         n->next->prev = n->prev;
     }
     
+    struct node *loopnode = nodelist->head;
+    
+    while(loopnode != NULL)
+    {
+	   struct routing_table_entry *rte;
+	   rte = getroutingtableentry(loopnode, n->name, 1);
+	   
+	   /* if the master rte exists, delete it */
+	   if(rte != NULL)
+	   {
+		deleterte(loopnode, rte, 1);
+	   }
+	  
+	  loopnode = loopnode->next;
+    }
+    
+    sleep(dvr_reset_interval+1);
+    loopnode = nodelist->head;
+    
+    while(loopnode != NULL)
+    {
+	struct windowlist *wl = getwindowlist(loopnode, n->name);
+	if(wl != NULL)
+	{
+		deletewindowlist(loopnode, wl);
+	}
+	
+	loopnode = loopnode->next;
+    }
     /* now it is gone from the list so free the node */
     freenode(n);
     
     return;
 }
 
-/* delete a routing table entry */
+/* delete a nodes routing table entry */
 void deleterte(struct node *n, struct routing_table_entry *rte, int master)
 {
 	if(n == NULL)
@@ -199,7 +268,7 @@ struct windowlist* getwindowlist(struct node* w, char* name)
         return NULL;
     }
 
-    // if w->window list has an entry for name in it return
+    /* if w->window list has an entry for name in it return */
     struct windowlist* tmp = w->windows;
     while(tmp != NULL)
     {
@@ -217,6 +286,7 @@ void freewindowlist(struct windowlist* w)
     freewindow(w->ackq);
     free(w->name);
     free(w);
+    w = NULL;
 }
 
 void createwindowlist(struct node* w, char* name)
@@ -230,7 +300,7 @@ void createwindowlist(struct node* w, char* name)
         return;
     }
 
-    // if w->window list has an entry for name in it return
+    /* if w->window list has an entry for name in it return*/
     struct windowlist* tmp = w->windows;
     while(tmp != NULL)
     {
@@ -241,10 +311,12 @@ void createwindowlist(struct node* w, char* name)
         tmp = tmp->next;
     }
     
-    // else create a w->windowlist entry for name 
+    /* else create a w->windowlist entry for name */
 
     struct windowlist *new = malloc(sizeof(struct windowlist));
     memset(new, 0, sizeof(struct windowlist));
+    new->next = NULL;
+    new->prev = NULL;
     new->name = malloc(BUFSIZE * sizeof(char));
     memset(new->name, 0, BUFSIZE * sizeof(char));
     strcpy(new->name, name);
@@ -353,7 +425,6 @@ struct routing_table_entry *rtappend(struct node *w, char* name,
 /* Adds an edge to node a and node b's routing tables of delay delay */
 void addedge(char* nodeaname, char* nodebname, int delay, int drop)
 {
-
     /* calc weight and get both nodes */
     float weight = (100.0/(100.0-drop))*delay;
     struct node* nodea = getnodefromname(nodeaname);
@@ -652,7 +723,7 @@ void getaddr(struct node *w)
         printf("Error getting address info on port: %s\n", portchar);
         exit(1);
     };
-    // TODO FIX MEMORY LEAK: call freeaddrinfo 
+    
     w->addr = info->ai_addr;
     return;
 }
@@ -1023,6 +1094,7 @@ void sigkillall()
 	/* loop through all nodes and kill their thread */
 	while(n!=NULL)
 	{
+		exit(1);
 		n->dead = 1;
 		
 		n = n->next;
@@ -1380,6 +1452,7 @@ void parseremovenode(char *msg)
         return;
     }
     
+    syncwait();
     sigkillthread(name);
     
     printf("[%s]Node deleted\n", name);
@@ -1490,7 +1563,7 @@ void syncwait()
 
 	int keepgoing = 1;
 
-	printf("Waiting...\n");
+	printf("Waiting for buffers to clear...\n");
 	/* wait until everybodies queues are emptied before proceeding */
 	while(keepgoing)
 	{

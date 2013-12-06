@@ -50,13 +50,9 @@ int receivemsg(char *name)
     struct sockaddr_storage their;
     socklen_t addr_size;
     
-    //fprintf(file, "[%s]", name);
     int sock = getsockfromname(name);
-    //fprintf(file, "got sock [%d], doing recv\n", sock);
     int bytes = recvfrom(sock, recvbuf, BUFSIZE-1, 0,
                          (struct sockaddr*)&their, &addr_size);
-    
-    //int bytes = 0;
     
     /* since we are using non-blocking recvfrom dont proceed
      if we didn't actually receive anything */
@@ -470,7 +466,6 @@ void handlenack(char *name, struct msgtok *tok)
 	    /* put it in queue to handle delays, and then let
 	    * our thread handle it when the delay comes up */
 	    enqueue(wl->ackq, tok->orig);
-        //sendudp(name, tok->orig, tok->dest);
         
         return;
     }
@@ -530,7 +525,6 @@ void handlemsg(char *name, struct msgtok *tok)
 	    /* put it in queue to handle delays, and then let
 	    * our thread handle it when the delay comes up */
         enqueue(wl->ackq, tok->orig);
-        //sendudp(name, tok->orig, tok->dest);
         
         return;
     }
