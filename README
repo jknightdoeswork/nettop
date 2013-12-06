@@ -1,0 +1,23 @@
+Run 'make' to build the runnable file
+
+foo.top is a sample input network built by us that displays what
+our program is capable of executing. You are free to modify it as
+you see fit, or build your own.
+
+To run our sample topology, use './nettop foo.top'
+
+A reference of the available commands can be found in nettop.pdf
+for building your own topology and executing queries.
+
+After running all of the commands in the topology file, it will
+then turn over the ability to input your own commands via stdin.
+
+Not specifying a topology file (just running ./nettop) will
+immediately turn control over to the user to build the network
+and execute queries on the fly.
+
+
+
+Our program was built to run on tuxworld. If ran elsewhere, you
+*may* have to modify the makefile to not include -lpthread when
+compiling.
